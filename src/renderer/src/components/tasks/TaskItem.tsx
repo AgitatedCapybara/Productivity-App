@@ -1,0 +1,285 @@
+import React, { useState } from 'react'
+import { motion } from 'motion/react'
+import { GripVertical, Check, MoreHorizontal } from 'lucide-react'
+import { useSortable } from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import { Task } from '../../types'
+import { cn } from '../../lib/utils'
+import { useAppStore } from '../../store/useAppStore'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '../ui/dropdown-menu'
+
+interface TaskItemProps {
+  task: Task
+  onComplete?: (id: string) => void
+  onUpdate?: (task: Partial<Task> & { id: string }) => void
+  onDelete?: (id: string) => void
+  isOverlay?: boolean
+}
+
+export const TaskItem = React.memo(function TaskItem({ 
+  task, 
+  onComplete, 
+  onUpdate, 
+  onDelete, 
+  isOverlay 
+}: TaskItemProps) {
+  const [isEditing, setIsEditing] = useState(false)
+  const [editTitle, setEditTitle] = useState(task.title)
+  const projects = useAppStore(state => state.projects)
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const startEditing = () => {
+    setEditTitle(task.title)
+    setIsEditing(true)
+  }
+
+  React.useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus()
+      inputRef.current.select()
+    }
+  }, [isEditing])
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ 
+    id: task.id,
+    disabled: isOverlay
+  })
+
+  // When being used as a dnd-kit Sortable item
+  const style = isOverlay ? undefined : {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    zIndex: isDragging ? 0 : 1,
+    opacity: isDragging ? 0.3 : 1
+  }
+
+  const handleEditSubmit = () => {
+    if (editTitle.trim() && editTitle !== task.title && onUpdate) {
+      onUpdate({ id: task.id, title: editTitle.trim() })
+    } else {
+      setEditTitle(task.title)
+    }
+    setIsEditing(false)
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleEditSubmit()
+    if (e.key === 'Escape') {
+      setEditTitle(task.title)
+      setIsEditing(false)
+    }
+  }
+
+  // The actual visual item
+  const inner = (
+    <>
+      <div 
+        className={cn(
+          "flex-shrink-0 w-[2.5px] h-5 rounded-full mr-1 transition-opacity",
+          task.priority === 1 ? "bg-slate-400" :
+          task.priority === 2 ? "bg-[var(--color-warning)]" :
+          task.priority === 3 ? "bg-[var(--accent-primary)]" : "opacity-0"
+        )}
+      />
+
+      <div
+        {...attributes}
+        {...listeners}
+        className="w-6 h-full flex items-center justify-center opacity-0 group-hover:opacity-30 cursor-grab active:cursor-grabbing hover:!opacity-100 transition-opacity"
+      >
+        <GripVertical size={14} className="text-[var(--text-secondary)]" />
+      </div>
+
+      <button
+        onClick={() => onComplete?.(task.id)}
+        className={cn(
+          "w-4 h-4 rounded-full border flex flex-shrink-0 items-center justify-center ml-1 mr-3 transition-colors",
+          task.status === 'done'
+            ? "bg-[var(--color-success)] border-[var(--color-success)] text-white"
+            : "border-[var(--border-default)] hover:border-[var(--accent-primary)] text-transparent"
+        )}
+      >
+        <Check size={10} strokeWidth={3} className={task.status === 'done' ? "block" : "hidden"} />
+      </button>
+
+      <div className="flex-1 flex items-center h-full min-w-0 pr-2 gap-2">
+        {isEditing ? (
+          <input
+            ref={inputRef}
+            value={editTitle}
+            onChange={(e) => setEditTitle(e.target.value)}
+            onBlur={handleEditSubmit}
+            onKeyDown={handleKeyDown}
+            className="w-full bg-transparent outline-none text-[13px] text-[var(--text-primary)] font-normal border-0 p-0 focus:ring-0"
+          />
+        ) : (
+          <div className="flex items-center gap-2 overflow-hidden flex-1 cursor-text" onClick={startEditing}>
+            <span 
+              className={cn(
+                "text-[13px] font-normal truncate",
+                task.status === 'done' ? "line-through opacity-50 text-[var(--text-secondary)]" : "text-[var(--text-primary)]"
+              )}
+            >
+              {task.title}
+            </span>
+            {task.due_date && (
+               <span 
+                 className="flex-shrink-0 text-[10px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-1.5 py-0.5 rounded border border-[var(--border-default)] cursor-default"
+                 title={(() => {
+                   const [year, month, day] = task.due_date.split('-').map(Number)
+                   const d = new Date(year, month - 1, day)
+                   
+                   const today = new Date()
+                   const localTodayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+                   
+                   const tomorrow = new Date(today)
+                   tomorrow.setDate(today.getDate() + 1)
+                   const localTomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
+                   
+                   let datePart = ''
+                   if (task.due_date === localTodayStr) {
+                     datePart = 'Today'
+                   } else if (task.due_date === localTomorrowStr) {
+                     datePart = 'Tomorrow'
+                   } else {
+                     datePart = d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' })
+                   }
+                   
+                   if (task.due_time) {
+                     const [h, m] = task.due_time.split(':').map(Number)
+                     const dateObj = new Date(year, month - 1, day, h, m)
+                     const timeFormatted = dateObj.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                     return `${datePart} at ${timeFormatted}`
+                   }
+                   return datePart
+                 })()}
+               >
+                 {(() => {
+                   const d = new Date()
+                   const localToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+                   const isToday = task.due_date === localToday
+                   
+                   const tomorrow = new Date(d)
+                   tomorrow.setDate(d.getDate() + 1)
+                   const localTomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
+                   
+                   if (isToday && task.due_time) {
+                     // Format HH:mm to 12h AM/PM format
+                     const [h, m] = task.due_time.split(':').map(Number)
+                     const dateObj = new Date()
+                     dateObj.setHours(h, m)
+                     return dateObj.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                   }
+                   
+                   if (task.due_date === localTomorrowStr) {
+                     return 'Tomorrow'
+                   }
+                   
+                   const [year, month, day] = task.due_date.split('-').map(Number)
+                   const dateObj = new Date(year, month - 1, day)
+                   return dateObj.toLocaleDateString([], { month: 'short', day: 'numeric' })
+                 })()}
+               </span>
+            )}
+            {task.project_id && task.project_id !== 'inbox-default' && (
+               <span className="flex-shrink-0 flex items-center gap-1 text-[10px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-1.5 py-0.5 rounded border border-[var(--border-default)]">
+                 <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: projects.find(p => p.id === task.project_id)?.color || '#888' }} />
+                 {projects.find(p => p.id === task.project_id)?.name || 'Project'}
+               </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="w-6 h-6 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all ml-auto">
+            <MoreHorizontal size={14} />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-40 z-50">
+          <DropdownMenuItem onSelect={() => {
+             setTimeout(() => {
+               startEditing()
+             }, 100)
+          }}>Edit title</DropdownMenuItem>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Set priority</DropdownMenuSubTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 0 })}>None</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 1 })}>Low</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 2 })}>Medium</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 3 })}>High</DropdownMenuItem>
+              </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Move to project</DropdownMenuSubTrigger>
+            <DropdownMenuPortal>
+              <DropdownMenuSubContent>
+                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, project_id: 'inbox-default' })}>
+                  Inbox
+                </DropdownMenuItem>
+                {projects.filter(p => p.id !== 'inbox-default').map(p => (
+                  <DropdownMenuItem
+                    key={p.id}
+                    onClick={() => onUpdate?.({ id: task.id, project_id: p.id })}
+                  >
+                    <span style={{ color: p.color }} className="mr-2">●</span>
+                    {p.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuPortal>
+          </DropdownMenuSub>
+          <DropdownMenuItem onClick={() => onDelete?.(task.id)} className="text-[var(--color-overdue)] focus:text-[var(--color-overdue)]">Delete</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  )
+
+  if (isOverlay) {
+    return (
+      <div 
+        className="group relative flex items-center h-[40px] px-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-xl opacity-100 cursor-grabbing pointer-events-none"
+      >
+        {inner}
+      </div>
+    )
+  }
+
+  // Remove layout from motion.div so it doesn't fight dnd-kit transform
+  return (
+    <motion.div
+      ref={setNodeRef}
+      style={style}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: isDragging ? 0.3 : 1, y: 0 }}
+      exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+      className={cn(
+        "group relative flex items-center h-[40px] px-2 rounded-lg transition-colors border border-transparent",
+        "hover:bg-[var(--bg-hover)]",
+        "no-drag"
+      )}
+    >
+      {inner}
+    </motion.div>
+  )
+})
