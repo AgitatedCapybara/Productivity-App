@@ -77,6 +77,9 @@ export function QuickAdd() {
 
   // Manual scheduling overrides states
   const [isManualEditing, setIsManualEditing] = useState(false)
+  const [isManuallyOverridden, setIsManuallyOverridden] = useState(false)
+  const [shake, setShake] = useState(false)
+  const [showShakeAlert, setShowShakeAlert] = useState(false)
   const [customDueDate, setCustomDueDate] = useState('')
   const [customDueTime, setCustomDueTime] = useState('')
   const [customPriority, setCustomPriority] = useState<0 | 1 | 2 | 3>(0)
@@ -106,7 +109,7 @@ export function QuickAdd() {
 
   // Sync state values to inferred ones as long as manual editing hasn't taken active control
   useEffect(() => {
-    if (!isManualEditing) {
+    if (!isManuallyOverridden && !isManualEditing) {
       if (parsedInfo) {
         setCustomDueDate(parsedInfo.due_date || '')
         setCustomDueTime(parsedInfo.due_time || '')
@@ -127,24 +130,47 @@ export function QuickAdd() {
         setCustomProjectId(activeView === 'project' && selectedProjectId ? selectedProjectId : 'inbox-default')
       }
     }
-  }, [parsedInfo, isManualEditing, activeView, selectedProjectId, projects])
+  }, [parsedInfo, isManualEditing, isManuallyOverridden, activeView, selectedProjectId, projects])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputValue.trim()) return
+
+    if (isManualEditing) {
+      setShake(false)
+      // Small tick delay to restart the animation if already shaking
+      setTimeout(() => {
+        setShake(true)
+      }, 10)
+      setShowShakeAlert(true)
+
+      setTimeout(() => {
+        setShake(false)
+      }, 500)
+
+      setTimeout(() => {
+        setShowShakeAlert(false)
+      }, 3000)
+
+      return
+    }
 
     // Explicit manual-override arguments
     const overrides = {
       due_date: customDueDate || null,
       due_time: customDueTime || null,
       priority: customPriority,
-      project_id: customProjectId === 'inbox-default' ? null : customProjectId
+      project_id: customProjectId === 'inbox-default' ? null : customProjectId,
+      isManuallyOverridden
     }
 
     createTask(inputValue, overrides)
     setInputValue('')
     setParsedInfo(null)
     setIsManualEditing(false)
+    setIsManuallyOverridden(false)
+    setShowShakeAlert(false)
+    setShake(false)
     
     // Show success checkmark briefly without closing the bar
     setShowSuccess(true)
@@ -175,10 +201,18 @@ export function QuickAdd() {
 
   return (
     <div className="mb-6 relative no-drag">
-      <div className={cn(
-        "bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl overflow-hidden shadow-sm transition-all duration-200",
-        "focus-within:border-[var(--accent-primary)] focus-within:shadow-md"
-      )}>
+      <motion.div
+        animate={shake ? {
+          x: [0, -6, 6, -6, 6, -4, 4, -2, 2, 0],
+        } : {}}
+        transition={{ duration: 0.5 }}
+        className={cn(
+          "bg-[var(--bg-elevated)] border rounded-xl overflow-hidden shadow-sm transition-all duration-200",
+          shake 
+            ? "border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.3)] bg-red-950/5" 
+            : "border-[var(--border-default)] focus-within:border-[var(--accent-primary)] focus-within:shadow-md"
+        )}
+      >
         <form onSubmit={handleSubmit} className="relative flex flex-col p-1">
           <div className="relative flex items-center">
             <input
@@ -269,7 +303,10 @@ export function QuickAdd() {
                         <input
                           type="date"
                           value={customDueDate}
-                          onChange={(e) => setCustomDueDate(e.target.value)}
+                          onChange={(e) => {
+                            setCustomDueDate(e.target.value)
+                            setIsManuallyOverridden(true)
+                          }}
                           className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] color-scheme-dark"
                         />
                       </div>
@@ -280,7 +317,10 @@ export function QuickAdd() {
                         <input
                           type="time"
                           value={customDueTime}
-                          onChange={(e) => setCustomDueTime(e.target.value)}
+                          onChange={(e) => {
+                            setCustomDueTime(e.target.value)
+                            setIsManuallyOverridden(true)
+                          }}
                           className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] color-scheme-dark"
                         />
                       </div>
@@ -312,7 +352,10 @@ export function QuickAdd() {
                               <button
                                 key={p}
                                 type="button"
-                                onClick={() => setCustomPriority(p)}
+                                onClick={() => {
+                                  setCustomPriority(p)
+                                  setIsManuallyOverridden(true)
+                                }}
                                 className={cn(
                                   "flex-1 text-[11px] py-1 px-1.5 rounded-lg border text-center transition-all cursor-pointer",
                                   activeClass
@@ -330,7 +373,10 @@ export function QuickAdd() {
                         <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Project</label>
                         <select
                           value={customProjectId}
-                          onChange={(e) => setCustomProjectId(e.target.value)}
+                          onChange={(e) => {
+                            setCustomProjectId(e.target.value)
+                            setIsManuallyOverridden(true)
+                          }}
                           className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-2 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] hover:border-[var(--text-muted)] cursor-pointer"
                         >
                           <option value="inbox-default">Inbox</option>
@@ -349,6 +395,7 @@ export function QuickAdd() {
                         type="button"
                         onClick={() => {
                           setIsManualEditing(false)
+                          setIsManuallyOverridden(false)
                         }}
                         className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                       >
@@ -356,13 +403,44 @@ export function QuickAdd() {
                         Reset to Auto-Schedule
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => setIsManualEditing(false)}
-                        className="bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] text-[11px] font-medium px-2.5 py-1 rounded-lg border border-[var(--border-default)] cursor-pointer"
-                      >
-                        Confirm Controls
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <AnimatePresence>
+                          {showShakeAlert && (
+                            <motion.span
+                              initial={{ opacity: 0, x: 0 }}
+                              animate={{ 
+                                opacity: [0, 1, 1, 0],
+                                x: [0, -3, 3, -3, 3, -1, 1, 0] 
+                              }}
+                              exit={{ opacity: 0 }}
+                              transition={{ 
+                                duration: 2.2, 
+                                ease: "easeInOut",
+                                times: [0, 0.1, 0.8, 1]
+                              }}
+                              className="text-red-400 font-medium text-[10px] sm:text-[11px] bg-red-950/40 border border-red-500/30 px-2 py-0.5 rounded-lg shadow-sm"
+                            >
+                              Confirm manual edits first!
+                            </motion.span>
+                          )}
+                        </AnimatePresence>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsManualEditing(false)
+                            setIsManuallyOverridden(true)
+                            setShowShakeAlert(false)
+                            setShake(false)
+                          }}
+                          className={cn(
+                            "bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-primary)] text-[11px] font-medium px-2.5 py-1 rounded-lg border cursor-pointer transition-all duration-200",
+                            shake ? "border-red-500 bg-red-950/20 text-red-200" : "border-[var(--border-default)]"
+                          )}
+                        >
+                          Confirm Controls
+                        </button>
+                      </div>
                     </div>
                   </motion.div>
                 )}
@@ -370,7 +448,7 @@ export function QuickAdd() {
             </div>
           )}
         </form>
-      </div>
+      </motion.div>
     </div>
   )
 }

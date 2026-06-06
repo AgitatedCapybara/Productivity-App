@@ -3,7 +3,7 @@ import * as chrono from 'chrono-node'
 import { useAppStore } from '../store/useAppStore'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
 
-export function parseTaskInput(raw: string) {
+export function parseTaskInput(raw: string, keepDateText = false) {
   let title = raw
   let projectTag: string | null = null
   const projectMatch = title.match(/@(\w+)/)
@@ -65,6 +65,10 @@ export function parseTaskInput(raw: string) {
     ? `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
     : null
     
+  if (keepDateText) {
+    return { title, due_date, due_time, priority, projectTag }
+  }
+
   // Handle surrounding parentheses brackets cleanly (e.g. "(tomorrow)") in descending index order
   const sortedResults = [...results].sort((a, b) => b.index - a.index)
   for (const res of sortedResults) {
@@ -130,15 +134,18 @@ export function useTasks() {
     loadTasks()
   }, [activeView, selectedProjectId])
 
-  const createTask = async (title: string, extra?: Partial<CreateTaskInput>) => {
+  const createTask = async (title: string, extra?: Partial<CreateTaskInput> & { isManuallyOverridden?: boolean }) => {
     try {
-      const parsed = parseTaskInput(title)
+      const isManuallyOverridden = extra?.isManuallyOverridden || false
+      const { isManuallyOverridden: _, ...cleanExtra } = extra || {}
+      
+      const parsed = parseTaskInput(title, isManuallyOverridden)
       const input: CreateTaskInput = {
         title: parsed.title,
         due_date: parsed.due_date,
         due_time: parsed.due_time,
         priority: parsed.priority,
-        ...extra
+        ...cleanExtra
       }
 
       if (parsed.projectTag) {
@@ -149,6 +156,10 @@ export function useTasks() {
         }
       } else if (activeView === 'project' && selectedProjectId) {
         input.project_id = selectedProjectId
+      }
+
+      if (extra && 'project_id' in extra) {
+        input.project_id = extra.project_id
       }
 
       if (!window.electronAPI) {
