@@ -70,7 +70,7 @@ export function Sidebar() {
     { id: 'today', icon: CheckSquare },
     { id: 'upcoming', icon: CalendarDays },
     { id: 'habits', icon: Flame },
-    { id: 'network', icon: Users },
+    { id: 'circle', icon: Users },
   ]
 
   return (

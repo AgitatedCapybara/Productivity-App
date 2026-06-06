@@ -68,7 +68,11 @@ function PriorityChip({ priority }: { priority: number }) {
   )
 }
 
-export function QuickAdd() {
+export interface QuickAddProps {
+  projectId?: string | null
+}
+
+export function QuickAdd({ projectId }: QuickAddProps = {}) {
   const { quickAddOpen, setQuickAddOpen } = useAppStore()
   const { createTask } = useTasks()
   const [inputValue, setInputValue] = useState('')
@@ -118,6 +122,8 @@ export function QuickAdd() {
         if (parsedInfo.projectTag) {
           const project = projects.find(p => p.name.toLowerCase() === parsedInfo.projectTag!.toLowerCase())
           setCustomProjectId(project ? project.id : 'inbox-default')
+        } else if (projectId) {
+          setCustomProjectId(projectId)
         } else if (activeView === 'project' && selectedProjectId) {
           setCustomProjectId(selectedProjectId)
         } else {
@@ -127,10 +133,10 @@ export function QuickAdd() {
         setCustomDueDate('')
         setCustomDueTime('')
         setCustomPriority(0)
-        setCustomProjectId(activeView === 'project' && selectedProjectId ? selectedProjectId : 'inbox-default')
+        setCustomProjectId(projectId || (activeView === 'project' && selectedProjectId ? selectedProjectId : 'inbox-default'))
       }
     }
-  }, [parsedInfo, isManualEditing, isManuallyOverridden, activeView, selectedProjectId, projects])
+  }, [parsedInfo, isManualEditing, isManuallyOverridden, activeView, selectedProjectId, projects, projectId])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -160,7 +166,7 @@ export function QuickAdd() {
       due_date: customDueDate || null,
       due_time: customDueTime || null,
       priority: customPriority,
-      project_id: customProjectId === 'inbox-default' ? null : customProjectId,
+      project_id: projectId !== undefined ? projectId : (customProjectId === 'inbox-default' ? null : customProjectId),
       isManuallyOverridden
     }
 

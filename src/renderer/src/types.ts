@@ -85,7 +85,7 @@ export interface CreateTaskInput {
 
 export type UpdateTaskInput = Partial<CreateTaskInput> & { id: string }
 
-export type View = 'today' | 'upcoming' | 'project' | 'habits' | 'analytics' | 'circle' | 'network' | 'settings'
+export type View = 'today' | 'upcoming' | 'project' | 'habits' | 'analytics' | 'circle' | 'settings'
 
 export interface IElectronAPI {
   getTasks: () => Promise<Task[]>

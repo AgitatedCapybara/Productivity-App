@@ -7,6 +7,43 @@ import { useAppStore } from '../store/useAppStore'
 export function MainLayout() {
   const activeView = useAppStore(state => state.activeView)
 
+  const renderView = () => {
+    switch (activeView) {
+      case 'today':
+        return <TodayView />
+      case 'upcoming':
+        return <UpcomingView />
+      case 'project':
+        return <ProjectView />
+      case 'habits':
+        return (
+          <div className="flex-1 flex items-center justify-center p-8 text-[var(--text-muted)] italic select-none text-xs sm:text-sm h-full" id="habits-coming-soon">
+            Habits · Coming in Phase 4
+          </div>
+        )
+      case 'analytics':
+        return (
+          <div className="flex-1 flex items-center justify-center p-8 text-[var(--text-muted)] italic select-none text-xs sm:text-sm h-full" id="analytics-coming-soon">
+            Analytics · Coming in Phase 5
+          </div>
+        )
+      case 'circle':
+        return (
+          <div className="flex-1 flex items-center justify-center p-8 text-[var(--text-muted)] italic select-none text-xs sm:text-sm h-full" id="circle-coming-soon">
+            Circle · Coming in Phase 6
+          </div>
+        )
+      case 'settings':
+        return (
+          <div className="flex-1 flex items-center justify-center p-8 text-[var(--text-muted)] italic select-none text-xs sm:text-sm h-full" id="settings-coming-soon">
+            Settings · Coming soon
+          </div>
+        )
+      default:
+        return <TodayView />
+    }
+  }
+
   return (
     <div className="flex w-screen h-screen overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Absolute top drag region for frameless window */}
@@ -17,12 +54,7 @@ export function MainLayout() {
       
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative h-full overflow-hidden">
-        {activeView === 'today' && <TodayView />}
-        {activeView === 'upcoming' && <UpcomingView />}
-        {activeView === 'project' && <ProjectView />}
-        {activeView === 'habits' && <div className="p-16 flex items-center justify-center text-[var(--text-muted)] italic">Habits view coming soon...</div>}
-        {activeView === 'network' && <div className="p-16 flex items-center justify-center text-[var(--text-muted)] italic">Network view coming soon...</div>}
-        {activeView === 'settings' && <div className="p-16 flex items-center justify-center text-[var(--text-muted)] italic">Settings view coming soon...</div>}
+        {renderView()}
       </main>
     </div>
   )
