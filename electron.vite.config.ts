@@ -30,8 +30,16 @@ export default defineConfig({
     server: {
       port: 3000,
       host: '0.0.0.0',
-      allowedHosts: 'all',
+      allowedHosts: true,
       hmr: process.env.DISABLE_HMR !== 'true'
+    },
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          widget: resolve(__dirname, 'src/renderer/widget.html')
+        }
+      }
     },
     plugins: [react(), tailwindcss()],
     resolve: {

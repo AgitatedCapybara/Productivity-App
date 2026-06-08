@@ -6,6 +6,8 @@ import { Task } from '../../types'
 import { TaskItem } from './TaskItem'
 import { useTasks } from '../../hooks/useTasks'
 
+import { useAppStore } from '../../store/useAppStore'
+
 interface TaskListProps {
   tasks: Task[]
 }
@@ -13,6 +15,56 @@ interface TaskListProps {
 export function TaskList({ tasks }: TaskListProps) {
   const { completeTask, updateTask, deleteTask, reorderTasks } = useTasks()
   const [activeId, setActiveId] = useState<string | null>(null)
+  
+  const selectedTaskIds = useAppStore(state => state.selectedTaskIds)
+  const setSelectedTaskIds = useAppStore(state => state.setSelectedTaskIds)
+  const lastSelectedTaskId = useAppStore(state => state.lastSelectedTaskId)
+  const setLastSelectedTaskId = useAppStore(state => state.setLastSelectedTaskId)
+
+  const handleSelect = (e: React.MouseEvent, taskId: string) => {
+    e.stopPropagation()
+    
+    // As requested: "only when shift + click is pressed ... is what can be selected"
+    if (!e.shiftKey && !e.metaKey && !e.ctrlKey && selectedTaskIds.length === 0) {
+      return // Do not initiate selection on a normal click if no selection exists
+    }
+
+    if (e.shiftKey && lastSelectedTaskId) {
+      const domNodes = Array.from(document.querySelectorAll('[data-task-id]'))
+      const ids = domNodes.map(node => node.getAttribute('data-task-id')) as string[]
+      
+      const startIndex = ids.indexOf(lastSelectedTaskId)
+      const endIndex = ids.indexOf(taskId)
+      
+      if (startIndex !== -1 && endIndex !== -1) {
+        const min = Math.min(startIndex, endIndex)
+        const max = Math.max(startIndex, endIndex)
+        const toSelect = ids.slice(min, max + 1)
+        
+        const newSelection = new Set([...selectedTaskIds, ...toSelect])
+        setSelectedTaskIds(Array.from(newSelection))
+      } else {
+        setSelectedTaskIds([...selectedTaskIds, taskId])
+        setLastSelectedTaskId(taskId)
+      }
+    } else if (e.metaKey || e.ctrlKey) {
+      if (selectedTaskIds.includes(taskId)) {
+        setSelectedTaskIds(selectedTaskIds.filter(id => id !== taskId))
+        setLastSelectedTaskId(null)
+      } else {
+        setSelectedTaskIds([...selectedTaskIds, taskId])
+        setLastSelectedTaskId(taskId)
+      }
+    } else {
+      if (selectedTaskIds.length > 0 && selectedTaskIds.length === 1 && selectedTaskIds[0] === taskId) {
+         setSelectedTaskIds([])
+         setLastSelectedTaskId(null)
+      } else {
+         setSelectedTaskIds([taskId])
+         setLastSelectedTaskId(taskId)
+      }
+    }
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -74,6 +126,8 @@ export function TaskList({ tasks }: TaskListProps) {
                 onComplete={completeTask}
                 onUpdate={updateTask}
                 onDelete={deleteTask}
+                isSelected={selectedTaskIds.includes(task.id)}
+                onSelect={handleSelect}
               />
             ))}
           </AnimatePresence>

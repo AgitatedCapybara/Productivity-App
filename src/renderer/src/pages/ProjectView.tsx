@@ -17,9 +17,18 @@ export function ProjectView() {
     )
   }
 
-  // Split tasks: active (status !== 'done') and completed (status === 'done')
-  const active = tasks.filter(t => t.status !== 'done')
-  const completed = tasks.filter(t => t.status === 'done')
+  let projectTasks = tasks
+  if (!window.electronAPI) {
+    projectTasks = tasks.filter(t => {
+      if (selectedProjectId === 'inbox-default') {
+        return !t.project_id || t.project_id === 'inbox-default'
+      }
+      return t.project_id === selectedProjectId
+    })
+  }
+
+  const active = projectTasks.filter(t => t.status !== 'done')
+  const completed = projectTasks.filter(t => t.status === 'done')
 
   return (
     <div className="flex-1 overflow-y-auto px-8 relative outline-none custom-scrollbar" id="project-view-container">

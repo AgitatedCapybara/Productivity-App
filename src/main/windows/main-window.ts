@@ -18,11 +18,17 @@ export function createMainWindow(): BrowserWindow {
     height: 680,
     minWidth: 720,
     minHeight: 500,
-    frame: false,
-    transparent: true,
+    frame: true, // Keep standard Windows snap and edges, hidden titlebar still hides the frame visually on Win
+    transparent: false,
     backgroundColor: '#00000000',
+    backgroundMaterial: 'mica',
     show: false,
     titleBarStyle: 'hidden',
+    titleBarOverlay: {
+      color: '#00000000',
+      symbolColor: '#A0A0A5',
+      height: 32
+    },
     webPreferences: {
       preload: join(_dirname, '../preload/index.mjs'),
       contextIsolation: true,

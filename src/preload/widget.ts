@@ -10,13 +10,33 @@ const api = {
   closeWindow: () => ipcRenderer.invoke('window:close'),
 }
 
+const widgetAPI = {
+  getActiveSession: () => ipcRenderer.invoke('focus-session:getActive'),
+  pauseSession: () => ipcRenderer.invoke('focus-session:pause'),
+  resumeSession: () => ipcRenderer.invoke('focus-session:resume'),
+  stopSession: () => ipcRenderer.invoke('focus-session:stop'),
+  onSessionTick: (callback: (elapsed: { seconds: number, distractionCount: number }) => void) => {
+    const handler = (_: any, elapsed: { seconds: number, distractionCount: number }) => callback(elapsed)
+    ipcRenderer.on('session:tick', handler)
+    return () => ipcRenderer.removeListener('session:tick', handler)
+  },
+  onSessionStopped: (callback: (summary: { durationMins: number, distractionCount: number }) => void) => {
+    const handler = (_: any, summary: { durationMins: number, distractionCount: number }) => callback(summary)
+    ipcRenderer.on('session:stopped', handler)
+    return () => ipcRenderer.removeListener('session:stopped', handler)
+  }
+}
+
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld('electronAPI', api)
+    contextBridge.exposeInMainWorld('widgetAPI', widgetAPI)
   } catch (error) {
     console.error(error)
   }
 } else {
   // @ts-ignore (define in dts)
   window.electronAPI = api
+  // @ts-ignore
+  window.widgetAPI = widgetAPI
 }

@@ -37,7 +37,7 @@ export interface Session {
   ended_at: string | null
   duration_mins: number
   distraction_count: number
-  status: 'active' | 'completed' | 'cancelled'
+  status: 'active' | 'paused' | 'completed' | 'cancelled'
 }
 
 export interface Distraction {

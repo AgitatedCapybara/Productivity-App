@@ -84,4 +84,23 @@ export function runMigrations(db: Database): void {
     db.exec('PRAGMA user_version = 3')
     user_version = 3
   }
+
+  if (user_version < 4) {
+    const checkStmt = db.prepare('SELECT id FROM projects WHERE id = ?')
+    const insertProject = db.prepare(`
+      INSERT INTO projects (id, name, color, icon, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+
+    // Safely add Work and Personal without duplicates if user already created them
+    if (!checkStmt.get('default-work')) {
+      insertProject.run('default-work', 'Work', '#3b82f6', 'briefcase', 1)
+    }
+    if (!checkStmt.get('default-personal')) {
+      insertProject.run('default-personal', 'Personal', '#10b981', 'user', 2)
+    }
+
+    db.exec('PRAGMA user_version = 4')
+    user_version = 4
+  }
 }

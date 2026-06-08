@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { format, parseISO, addDays } from 'date-fns'
+import { format, addDays } from 'date-fns'
 import { useTasks } from '../hooks/useTasks'
 import { TaskSection } from '../components/tasks/TaskSection'
 import { Task } from '../types'
@@ -13,8 +13,18 @@ export function UpcomingView() {
 
   // Group by date
   const groupedTasks = useMemo(() => {
+    let sourceTasks = tasks
+    if (!window.electronAPI) {
+      const d = new Date()
+      const formatLocalStr = (dt: Date) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+      const todayStr = formatLocalStr(d)
+      d.setDate(d.getDate() + 7)
+      const endStr = formatLocalStr(d)
+      sourceTasks = tasks.filter(t => t.status !== 'done' && t.due_date && t.due_date > todayStr && t.due_date <= endStr)
+    }
+
     const groups: Record<string, Task[]> = {}
-    tasks.forEach(t => {
+    sourceTasks.forEach(t => {
       if (!t.due_date) return
       if (!groups[t.due_date]) groups[t.due_date] = []
       groups[t.due_date].push(t)
@@ -57,13 +67,16 @@ export function UpcomingView() {
                </div>
             ) : (
                groupedTasks.map(group => {
-                 const title = group.date === tomorrowStr
-                   ? "Tomorrow"
-                   : format(parseISO(group.date), "EEEE, MMMM d")
+                 let formattedTitle = "Tomorrow"
+                 if (group.date !== tomorrowStr) {
+                   const [year, month, day] = group.date.split('-').map(Number)
+                   const d = new Date(year, month - 1, day)
+                   formattedTitle = format(d, "EEEE, MMMM d")
+                 }
                  return (
                    <TaskSection 
                      key={group.date}
-                     title={title} 
+                     title={formattedTitle} 
                      tasks={group.tasks} 
                      accentColor="var(--text-secondary)" 
                      defaultOpen 

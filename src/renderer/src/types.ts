@@ -88,6 +88,7 @@ export type UpdateTaskInput = Partial<CreateTaskInput> & { id: string }
 export type View = 'today' | 'upcoming' | 'project' | 'habits' | 'analytics' | 'circle' | 'settings'
 
 export interface IElectronAPI {
+  setZoomRatio: (ratio: number) => void
   getTasks: () => Promise<Task[]>
   getTasksDueToday: () => Promise<Task[]>
   getTasksUpcoming: () => Promise<Task[]>
@@ -108,13 +109,10 @@ export interface IElectronAPI {
   updateHabit: (input: UpdateHabitInput) => Promise<Habit>
   deleteHabit: (id: string) => Promise<void>
   minimizeWindow: () => Promise<void>
+  maximizeWindow: () => Promise<void>
+  toggleFullscreen: () => Promise<void>
   closeWindow: () => Promise<void>
   onGlobalShortcutTriggered: (cb: () => void) => () => void
   onFocusSessionStarted: (cb: (sessionId: string) => void) => () => void
 }
 
-declare global {
-  interface Window {
-    electronAPI: IElectronAPI
-  }
-}

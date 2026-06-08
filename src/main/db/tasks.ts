@@ -19,7 +19,7 @@ export function getTasksByProject(projectId: string): Task[] {
 export function getTasksDueToday(): Task[] {
   const stmt = getDb().prepare(`
     SELECT * FROM tasks 
-    WHERE due_date <= date('now') AND status != 'done' 
+    WHERE due_date <= date('now', 'localtime') AND status != 'done' 
     ORDER BY sort_order
   `)
   return stmt.all() as Task[]
@@ -28,7 +28,7 @@ export function getTasksDueToday(): Task[] {
 export function getTasksUpcoming(): Task[] {
   const stmt = getDb().prepare(`
     SELECT * FROM tasks 
-    WHERE due_date > date('now') AND due_date <= date('now', '+7 days') AND status != 'done' 
+    WHERE due_date > date('now', 'localtime') AND due_date <= date('now', 'localtime', '+7 days') AND status != 'done' 
     ORDER BY due_date, sort_order
   `)
   return stmt.all() as Task[]
@@ -37,7 +37,11 @@ export function getTasksUpcoming(): Task[] {
 export function getTasksForToday(): Task[] {
   const stmt = getDb().prepare(`
     SELECT * FROM tasks 
-    WHERE (due_date IS NULL OR due_date <= date('now')) AND status != 'done'
+    WHERE (
+      (due_date <= date('now', 'localtime')) 
+      OR 
+      (due_date IS NULL AND (project_id IS NULL OR project_id = 'inbox-default'))
+    ) AND status != 'done'
     ORDER BY sort_order
   `)
   return stmt.all() as Task[]
@@ -46,7 +50,7 @@ export function getTasksForToday(): Task[] {
 export function getTodayCompletedTasks(): Task[] {
   const stmt = getDb().prepare(`
     SELECT * FROM tasks 
-    WHERE status = 'done' AND date(completed_at) = date('now')
+    WHERE status = 'done' AND date(completed_at, 'localtime') = date('now', 'localtime')
     ORDER BY completed_at DESC
   `)
   return stmt.all() as Task[]

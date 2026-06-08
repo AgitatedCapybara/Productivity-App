@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import * as chrono from 'chrono-node'
 import { useAppStore } from '../store/useAppStore'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
@@ -91,32 +91,39 @@ export function parseTaskInput(raw: string, keepDateText = false) {
 }
 
 export function useTasks() {
-  const { tasks, completedTasks, isLoading, error, setTasks, setCompletedTasks, addCompletedTask, addTask, updateTask: updateStoreTask, removeTask, reorderTasks: reorderStoreTasks, setLoading, setError } = useAppStore()
+  const { tasks, completedTasks, error, setTasks, setCompletedTasks, addCompletedTask, addTask, updateTask: updateStoreTask, removeTask, reorderTasks: reorderStoreTasks, setError } = useAppStore()
+  const setActiveSession = useAppStore(state => state.setActiveSession)
+  const setSessionDistractionCount = useAppStore(state => state.setSessionDistractionCount)
+  const [isLoading, setLoading] = useState(false)
   const activeView = useAppStore(state => state.activeView)
   const selectedProjectId = useAppStore(state => state.selectedProjectId)
 
-  const loadTasks = async () => {
-    setLoading(true)
+  const loadTasks = async (silent = false) => {
+    if (!silent) setLoading(true)
     setError(null)
     if (!window.electronAPI) {
       // Local state only fallback for web preview
-      setLoading(false)
+      if (!silent) setLoading(false)
       return
     }
     
     try {
       if (activeView === 'today') {
-        const todayTasks = await window.electronAPI.getTasksForToday()
-        setTasks(todayTasks)
-        const completed = await window.electronAPI.getTodayCompletedTasks()
-        setCompletedTasks(completed)
+        const [tasksResult, completedResult] = await Promise.allSettled([
+          window.electronAPI.getTasksForToday(),
+          window.electronAPI.getTodayCompletedTasks()
+        ])
+        if (tasksResult.status === 'fulfilled') setTasks(tasksResult.value)
+        else setTasks([])
+        if (completedResult.status === 'fulfilled') setCompletedTasks(completedResult.value)
+        else setCompletedTasks([])
       } else if (activeView === 'upcoming') {
         const upcomingTasks = await window.electronAPI.getTasksUpcoming()
         setTasks(upcomingTasks)
         setCompletedTasks([])
       } else if (activeView === 'project') {
         if (!selectedProjectId) {
-          setLoading(false)
+          if (!silent) setLoading(false)
           return
         }
         const projectTasks = await window.electronAPI.getTasksByProject(selectedProjectId)
@@ -126,13 +133,23 @@ export function useTasks() {
     } catch (err: any) {
       setError(err.message || 'Failed to load tasks')
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
   useEffect(() => {
     loadTasks()
   }, [activeView, selectedProjectId])
+
+  useEffect(() => {
+    if (!window.electronAPI || !window.electronAPI.onSessionDistractionUpdate) return
+    const removeListener = window.electronAPI.onSessionDistractionUpdate((count: number) => {
+      setSessionDistractionCount(count)
+    })
+    return () => {
+      if (typeof removeListener === 'function') removeListener()
+    }
+  }, [setSessionDistractionCount])
 
   const createTask = async (title: string, extra?: Partial<CreateTaskInput> & { isManuallyOverridden?: boolean }) => {
     try {
@@ -184,8 +201,8 @@ export function useTasks() {
         return
       }
 
-      const newTask = await window.electronAPI.createTask(input)
-      addTask(newTask)
+      await window.electronAPI.createTask(input)
+      await loadTasks(true)
     } catch (err: any) {
       setError(err.message || 'Failed to create task')
     }
@@ -201,8 +218,8 @@ export function useTasks() {
     }
     
     try {
-      const updatedTask = await window.electronAPI.updateTask(input)
-      updateStoreTask(updatedTask)
+      await window.electronAPI.updateTask(input)
+      await loadTasks(true)
     } catch (err: any) {
       setError(err.message || 'Failed to update task')
     }
@@ -299,6 +316,34 @@ export function useTasks() {
     })
   }
 
+  const startSession = async (taskId: string) => {
+    if (!window.electronAPI) {
+      setActiveSession(taskId)
+      return null
+    }
+    try {
+      const session = await window.electronAPI.startSession?.(taskId)
+      setActiveSession(taskId)
+      return session
+    } catch (err: any) {
+      setError(err.message || 'Failed to start session')
+      return null
+    }
+  }
+
+  const stopSession = async () => {
+    if (!window.electronAPI) {
+      setActiveSession(null)
+      return
+    }
+    try {
+      await window.electronAPI.stopSession?.()
+      setActiveSession(null)
+    } catch (err: any) {
+      setError(err.message || 'Failed to stop session')
+    }
+  }
+
   return {
     tasks: [...tasks].sort((a,b) => a.sort_order - b.sort_order),
     completedTasks,
@@ -309,6 +354,8 @@ export function useTasks() {
     deleteTask,
     completeTask,
     reorderTasks,
-    loadTasks
+    loadTasks,
+    startSession,
+    stopSession
   }
 }

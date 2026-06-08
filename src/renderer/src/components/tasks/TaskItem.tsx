@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
 import { motion } from 'motion/react'
-import { GripVertical, Check, MoreHorizontal } from 'lucide-react'
+import { GripVertical, Check, MoreHorizontal, Play } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Task } from '../../types'
 import { cn } from '../../lib/utils'
 import { useAppStore } from '../../store/useAppStore'
+import { useTasks } from '../../hooks/useTasks'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +24,8 @@ interface TaskItemProps {
   onUpdate?: (task: Partial<Task> & { id: string }) => void
   onDelete?: (id: string) => void
   isOverlay?: boolean
+  isSelected?: boolean
+  onSelect?: (e: React.MouseEvent, taskId: string) => void
 }
 
 export const TaskItem = React.memo(function TaskItem({ 
@@ -30,11 +33,15 @@ export const TaskItem = React.memo(function TaskItem({
   onComplete, 
   onUpdate, 
   onDelete, 
-  isOverlay 
+  isOverlay,
+  isSelected,
+  onSelect
 }: TaskItemProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
   const projects = useAppStore(state => state.projects)
+  const activeSessionId = useAppStore(state => state.activeSessionId)
+  const { startSession } = useTasks()
   const inputRef = React.useRef<HTMLInputElement | null>(null)
 
   const startEditing = () => {
@@ -61,7 +68,6 @@ export const TaskItem = React.memo(function TaskItem({
     disabled: isOverlay
   })
 
-  // When being used as a dnd-kit Sortable item
   const style = isOverlay ? undefined : {
     transform: CSS.Translate.toString(transform),
     transition,
@@ -86,7 +92,12 @@ export const TaskItem = React.memo(function TaskItem({
     }
   }
 
-  // The actual visual item
+  const handlePlayClick = (e: React.MouseEvent) => {
+    if (e.shiftKey || e.metaKey || e.ctrlKey) return
+    e.stopPropagation()
+    startSession(task.id)
+  }
+
   const inner = (
     <>
       <div 
@@ -129,7 +140,14 @@ export const TaskItem = React.memo(function TaskItem({
             className="w-full bg-transparent outline-none text-[13px] text-[var(--text-primary)] font-normal border-0 p-0 focus:ring-0"
           />
         ) : (
-          <div className="flex items-center gap-2 overflow-hidden flex-1 cursor-text" onClick={startEditing}>
+          <div 
+            className="flex items-center gap-2 overflow-hidden flex-1 cursor-text" 
+            onClick={(e) => {
+              if (e.shiftKey || e.metaKey || e.ctrlKey) return
+              e.stopPropagation()
+              startEditing()
+            }}
+          >
             <span 
               className={cn(
                 "text-[13px] font-normal truncate",
@@ -180,7 +198,6 @@ export const TaskItem = React.memo(function TaskItem({
                    const localTomorrowStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
                    
                    if (isToday && task.due_time) {
-                     // Format HH:mm to 12h AM/PM format
                      const [h, m] = task.due_time.split(':').map(Number)
                      const dateObj = new Date()
                      dateObj.setHours(h, m)
@@ -206,6 +223,22 @@ export const TaskItem = React.memo(function TaskItem({
           </div>
         )}
       </div>
+
+      {activeSessionId === task.id ? (
+        <div className="flex flex-shrink-0 items-center justify-center w-6 h-6 mr-1">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-success)] opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-success)]"></span>
+          </span>
+        </div>
+      ) : (
+        <button 
+          onClick={handlePlayClick}
+          className="w-6 h-6 flex flex-shrink-0 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-all mr-1"
+        >
+          <Play size={14} className="fill-current" />
+        </button>
+      )}
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -265,19 +298,26 @@ export const TaskItem = React.memo(function TaskItem({
     )
   }
 
-  // Remove layout from motion.div so it doesn't fight dnd-kit transform
   return (
     <motion.div
       ref={setNodeRef}
       style={style}
+      data-task-id={task.id}
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: isDragging ? 0.3 : 1, y: 0 }}
       exit={{ opacity: 0, height: 0, marginBottom: 0 }}
       className={cn(
-        "group relative flex items-center h-[40px] px-2 rounded-lg transition-colors border border-transparent",
-        "hover:bg-[var(--bg-hover)]",
+        "group relative flex items-center h-[40px] px-2 rounded-lg transition-colors border",
+        isSelected 
+          ? "bg-[var(--bg-elevated)] border-[var(--accent-primary)] ring-1 ring-[var(--accent-primary)]" 
+          : "border-transparent hover:bg-[var(--bg-hover)]",
         "no-drag"
       )}
+      onClick={(e) => {
+        if (e.currentTarget.contains(e.target as Node)) {
+          onSelect?.(e, task.id)
+        }
+      }}
     >
       {inner}
     </motion.div>

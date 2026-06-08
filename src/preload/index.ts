@@ -1,8 +1,9 @@
 // src/preload/index.ts
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webFrame } from 'electron'
 
 // Custom APIs for renderer
 const api = {
+  setZoomRatio: (ratio: number) => webFrame.setZoomFactor(ratio),
   getTasks: () => ipcRenderer.invoke('tasks:getAll'),
   getTasksDueToday: () => ipcRenderer.invoke('tasks:getDueToday'),
   getTasksUpcoming: () => ipcRenderer.invoke('tasks:getUpcoming'),
@@ -26,6 +27,8 @@ const api = {
   deleteHabit: (id: string) => ipcRenderer.invoke('habits:delete', id),
   
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
+  toggleFullscreen: () => ipcRenderer.invoke('window:toggleFullscreen'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
   
   onGlobalShortcutTriggered: (cb: () => void) => {
@@ -38,6 +41,18 @@ const api = {
     const handler = (_: any, sessionId: string) => cb(sessionId)
     ipcRenderer.on('focus-session:started', handler)
     return () => ipcRenderer.removeListener('focus-session:started', handler)
+  },
+
+  startSession: (taskId: string) => ipcRenderer.invoke('focus-session:start', { taskId }),
+  pauseSession: () => ipcRenderer.invoke('focus-session:pause'),
+  resumeSession: () => ipcRenderer.invoke('focus-session:resume'),
+  stopSession: () => ipcRenderer.invoke('focus-session:stop'),
+  getActiveSession: () => ipcRenderer.invoke('focus-session:getActive'),
+  getTodaySessions: () => ipcRenderer.invoke('focus-session:getToday'),
+  onSessionDistractionUpdate: (callback: (count: number) => void) => {
+    const handler = (_: any, count: number) => callback(count)
+    ipcRenderer.on('session:distraction-update', handler)
+    return () => ipcRenderer.removeListener('session:distraction-update', handler)
   }
 }
 

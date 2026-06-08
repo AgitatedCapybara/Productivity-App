@@ -3,9 +3,20 @@ import { TodayView } from '../pages/TodayView'
 import { UpcomingView } from '../pages/UpcomingView'
 import { ProjectView } from '../pages/ProjectView'
 import { useAppStore } from '../store/useAppStore'
+import { useTasks } from '../hooks/useTasks'
+import { Trash2, X } from 'lucide-react'
+import { AnimatePresence, motion } from 'motion/react'
 
 export function MainLayout() {
   const activeView = useAppStore(state => state.activeView)
+  const selectedTaskIds = useAppStore(state => state.selectedTaskIds)
+  const setSelectedTaskIds = useAppStore(state => state.setSelectedTaskIds)
+  const { deleteTask } = useTasks()
+
+  const handleBulkDelete = () => {
+    selectedTaskIds.forEach(id => deleteTask(id))
+    setSelectedTaskIds([])
+  }
 
   const renderView = () => {
     switch (activeView) {
@@ -55,6 +66,34 @@ export function MainLayout() {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative h-full overflow-hidden">
         {renderView()}
+
+        <AnimatePresence>
+          {selectedTaskIds.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 50, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 50, scale: 0.95 }}
+              className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-xl shadow-2xl z-50"
+            >
+              <span className="text-sm font-medium pr-2 border-r border-[var(--border-default)]">
+                {selectedTaskIds.length} selected
+              </span>
+              <button 
+                onClick={handleBulkDelete}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+              >
+                <Trash2 size={14} />
+                Delete
+              </button>
+              <button 
+                onClick={() => setSelectedTaskIds([])}
+                className="p-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors rounded-md hover:bg-[var(--bg-hover)]"
+              >
+                <X size={16} />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   )

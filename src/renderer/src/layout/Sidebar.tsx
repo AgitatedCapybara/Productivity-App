@@ -14,9 +14,13 @@ export function Sidebar() {
 
   useEffect(() => {
     if (activeView === 'upcoming') {
-      const now = Date.now()
-      setLastViewedUpcoming(now)
-      localStorage.setItem('last_viewed_upcoming', String(now))
+      const updateTime = () => {
+        const now = Date.now()
+        setLastViewedUpcoming(now)
+        localStorage.setItem('last_viewed_upcoming', String(now))
+      }
+      updateTime()
+      return updateTime
     }
   }, [activeView])
 
@@ -32,9 +36,17 @@ export function Sidebar() {
         if (active) {
           const hasNew = upcoming.some(t => {
             if (t.status !== 'todo') return false
+            
+            const parseSqliteDate = (str: string | undefined | null) => {
+              if (!str) return 0
+              // If it lacks timezone info, assume UTC from SQLite and convert to ISO format
+              const safeStr = str.includes('T') ? str : str.replace(' ', 'T') + 'Z'
+              return new Date(safeStr).getTime()
+            }
+            
             const taskTime = Math.max(
-              t.created_at ? new Date(t.created_at).getTime() : 0,
-              t.updated_at ? new Date(t.updated_at).getTime() : 0
+              parseSqliteDate(t.created_at),
+              parseSqliteDate(t.updated_at)
             )
             return taskTime > lastViewedUpcoming
           })
@@ -57,9 +69,16 @@ export function Sidebar() {
   
   const hasUpcomingWeb = tasks.some(t => {
     if (t.status !== 'todo' || !t.due_date || t.due_date <= todayStr) return false
+    
+    const parseDate = (str: string | undefined | null) => {
+      if (!str) return 0
+      const safeStr = str.includes('T') ? str : str.replace(' ', 'T') + 'Z'
+      return new Date(safeStr).getTime()
+    }
+    
     const taskTime = Math.max(
-      t.created_at ? new Date(t.created_at).getTime() : 0,
-      t.updated_at ? new Date(t.updated_at).getTime() : 0
+      parseDate(t.created_at),
+      parseDate(t.updated_at)
     )
     return taskTime > lastViewedUpcoming
   })

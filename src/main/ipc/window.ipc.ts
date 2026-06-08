@@ -13,6 +13,10 @@ export function registerWindowHandlers(mainWindow: BrowserWindow) {
     }
   })
 
+  ipcMain.handle('window:toggleFullscreen', () => {
+    mainWindow.setFullScreen(!mainWindow.isFullScreen())
+  })
+
   ipcMain.handle('window:close', () => {
     mainWindow.close()
   })
