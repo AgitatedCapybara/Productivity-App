@@ -1,6 +1,6 @@
 // KEEP IN SYNC WITH: src/types.ts (renderer mirror)
 
-export type TaskStatus = 'todo' | 'in_progress' | 'done'
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'deleted'
 export type TaskPriority = 0 | 1 | 2 | 3
 
 export interface Task {
@@ -33,6 +33,8 @@ export interface Project {
 export interface Session {
   id: string
   task_id: string | null
+  project_id: string | null
+  target_duration_mins: number
   started_at: string
   ended_at: string | null
   duration_mins: number

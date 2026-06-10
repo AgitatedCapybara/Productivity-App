@@ -3,13 +3,14 @@ import { motion } from 'motion/react'
 import { Play, Pause, Square } from 'lucide-react'
 import type { Session } from '../../preload/index.d'
 
-type SessionSummary = { durationMins: number; distractionCount: number }
+type SessionSummary = { durationMins: number; durationSeconds?: number; distractionCount: number }
 
 export function Widget() {
   const [session, setSession] = useState<Session | null>(null)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [distractionCount, setDistractionCount] = useState(0)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
+  const [targetMinutes, setTargetMinutes] = useState(25)
 
   useEffect(() => {
     // 1. Check initial state
@@ -17,6 +18,8 @@ export function Widget() {
       setSession(s)
       if (s) {
         setDistractionCount(s.distractionCount)
+        const mins = (s as any).targetDurationMins || (s as any).target_duration_mins || 25
+        setTargetMinutes(mins)
       }
     })
 
@@ -24,6 +27,9 @@ export function Widget() {
     const cleanupTick = window.widgetAPI.onSessionTick((data) => {
       setElapsedSeconds(data.seconds)
       setDistractionCount(data.distractionCount)
+      if (data.targetDurationMins) {
+        setTargetMinutes(data.targetDurationMins)
+      }
     })
 
     // 3. Listen to summary
@@ -52,7 +58,11 @@ export function Widget() {
   const handleStop = async () => {
     const data = await window.widgetAPI.stopSession()
     if (data) {
-      setSummary({ durationMins: data.durationMins, distractionCount: data.distractionCount })
+      setSummary({ 
+        durationMins: data.durationMins, 
+        durationSeconds: (data as any).durationSeconds, 
+        distractionCount: data.distractionCount 
+      })
       setSession(null)
     }
   }
@@ -63,7 +73,6 @@ export function Widget() {
   }
 
   // Derived state
-  const targetMinutes = 25
   const targetSeconds = targetMinutes * 60
   const progressRatio = Math.min(1, elapsedSeconds / targetSeconds)
   const strokeDashoffset = 339 * (1 - progressRatio) // derived from radius 54 => 2*pi*r
@@ -91,7 +100,17 @@ export function Widget() {
           </div>
           <h2 className="text-xl font-semibold mb-2">Session Complete</h2>
           <div className="flex gap-4 text-sm text-white/50 mb-8">
-            <span>{summary.durationMins} min logged</span>
+            <span>
+              {summary.durationSeconds !== undefined ? (
+                summary.durationSeconds >= 60 ? (
+                  `${Math.floor(summary.durationSeconds / 60)}m ${summary.durationSeconds % 60}s logged`
+                ) : (
+                  `${summary.durationSeconds}s logged`
+                )
+              ) : (
+                `${summary.durationMins} min logged`
+              )}
+            </span>
             <span>·</span>
             <span>{summary.distractionCount} distractions</span>
           </div>
@@ -117,7 +136,7 @@ export function Widget() {
       <div className="flex-1 flex flex-col items-center justify-center px-6" style={{ WebkitAppRegion: 'no-drag' } as any}>
         {/* Title */}
         <h3 className="text-sm font-medium text-white/80 w-full text-center truncate mb-4">
-          {session?.taskId ? 'Task in progress' : 'Focus Session'}
+          {session?.taskId || (session as any)?.task_id ? 'Task in progress' : (session as any)?.projectId || (session as any)?.project_id ? 'Project focus session' : 'Focus Session'}
         </h3>
 
         {/* Ring */}

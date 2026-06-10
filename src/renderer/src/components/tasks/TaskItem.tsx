@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion } from 'motion/react'
-import { GripVertical, Check, MoreHorizontal, Play } from 'lucide-react'
+import { GripVertical, Check, MoreHorizontal, Play, Square, Trash2 } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Task } from '../../types'
@@ -40,8 +40,8 @@ export const TaskItem = React.memo(function TaskItem({
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
   const projects = useAppStore(state => state.projects)
-  const activeSessionId = useAppStore(state => state.activeSessionId)
-  const { startSession } = useTasks()
+  const activeTaskId = useAppStore(state => state.activeTaskId)
+  const { startSession, stopSession } = useTasks()
   const inputRef = React.useRef<HTMLInputElement | null>(null)
 
   const startEditing = () => {
@@ -93,9 +93,14 @@ export const TaskItem = React.memo(function TaskItem({
   }
 
   const handlePlayClick = (e: React.MouseEvent) => {
-    if (e.shiftKey || e.metaKey || e.ctrlKey) return
+    if (e.shiftKey || e.metaKey || e.ctrlKey || task.status === 'deleted') return
     e.stopPropagation()
     startSession(task.id)
+  }
+
+  const handleStopClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    stopSession()
   }
 
   const inner = (
@@ -117,17 +122,23 @@ export const TaskItem = React.memo(function TaskItem({
         <GripVertical size={14} className="text-[var(--text-secondary)]" />
       </div>
 
-      <button
-        onClick={() => onComplete?.(task.id)}
-        className={cn(
-          "w-4 h-4 rounded-full border flex flex-shrink-0 items-center justify-center ml-1 mr-3 transition-colors",
-          task.status === 'done'
-            ? "bg-[var(--color-success)] border-[var(--color-success)] text-white"
-            : "border-[var(--border-default)] hover:border-[var(--accent-primary)] text-transparent"
-        )}
-      >
-        <Check size={10} strokeWidth={3} className={task.status === 'done' ? "block" : "hidden"} />
-      </button>
+      {task.status === 'deleted' ? (
+        <div className="w-4 h-4 flex flex-shrink-0 items-center justify-center ml-1 mr-3 text-[var(--color-overdue)] opacity-80" title="This task is in the recycle bin">
+          <Trash2 size={12} />
+        </div>
+      ) : (
+        <button
+          onClick={() => onComplete?.(task.id)}
+          className={cn(
+            "w-4 h-4 rounded-full border flex flex-shrink-0 items-center justify-center ml-1 mr-3 transition-colors",
+            task.status === 'done'
+              ? "bg-[var(--color-success)] border-[var(--color-success)] text-white"
+              : "border-[var(--border-default)] hover:border-[var(--accent-primary)] text-transparent"
+          )}
+        >
+          <Check size={10} strokeWidth={3} className={task.status === 'done' ? "block" : "hidden"} />
+        </button>
+      )}
 
       <div className="flex-1 flex items-center h-full min-w-0 pr-2 gap-2">
         {isEditing ? (
@@ -151,7 +162,8 @@ export const TaskItem = React.memo(function TaskItem({
             <span 
               className={cn(
                 "text-[13px] font-normal truncate",
-                task.status === 'done' ? "line-through opacity-50 text-[var(--text-secondary)]" : "text-[var(--text-primary)]"
+                task.status === 'done' ? "line-through opacity-50 text-[var(--text-secondary)]" : 
+                task.status === 'deleted' ? "line-through opacity-40 text-[var(--text-muted)] italic" : "text-[var(--text-primary)]"
               )}
             >
               {task.title}
@@ -224,14 +236,21 @@ export const TaskItem = React.memo(function TaskItem({
         )}
       </div>
 
-      {activeSessionId === task.id ? (
-        <div className="flex flex-shrink-0 items-center justify-center w-6 h-6 mr-1">
-          <span className="relative flex h-2 w-2">
+      {activeTaskId === task.id ? (
+        <button 
+          onClick={handleStopClick}
+          className="relative w-6 h-6 mr-1 flex-shrink-0 flex items-center justify-center rounded-md hover:bg-[var(--bg-elevated)] text-[var(--color-success)] hover:text-[var(--color-overdue)] transition-all group/stop"
+          title="Stop active session"
+        >
+          {/* Pulsing green dot by default */}
+          <span className="absolute flex h-2 w-2 group-hover:hidden group-hover/stop:hidden transition-all duration-150">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-success)] opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-success)]"></span>
           </span>
-        </div>
-      ) : (
+          {/* Stop Square icon shown on hover */}
+          <Square size={10} className="hidden group-hover:block group-hover/stop:block fill-current" />
+        </button>
+      ) : task.status !== 'deleted' && (
         <button 
           onClick={handlePlayClick}
           className="w-6 h-6 flex flex-shrink-0 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-all mr-1"
@@ -247,42 +266,55 @@ export const TaskItem = React.memo(function TaskItem({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-40 z-50">
-          <DropdownMenuItem onSelect={() => {
-             setTimeout(() => {
-               startEditing()
-             }, 100)
-          }}>Edit title</DropdownMenuItem>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Set priority</DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 0 })}>None</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 1 })}>Low</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 2 })}>Medium</DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 3 })}>High</DropdownMenuItem>
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>Move to project</DropdownMenuSubTrigger>
-            <DropdownMenuPortal>
-              <DropdownMenuSubContent>
-                <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, project_id: 'inbox-default' })}>
-                  Inbox
-                </DropdownMenuItem>
-                {projects.filter(p => p.id !== 'inbox-default').map(p => (
-                  <DropdownMenuItem
-                    key={p.id}
-                    onClick={() => onUpdate?.({ id: task.id, project_id: p.id })}
-                  >
-                    <span style={{ color: p.color }} className="mr-2">●</span>
-                    {p.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuPortal>
-          </DropdownMenuSub>
-          <DropdownMenuItem onClick={() => onDelete?.(task.id)} className="text-[var(--color-overdue)] focus:text-[var(--color-overdue)]">Delete</DropdownMenuItem>
+          {task.status === 'deleted' ? (
+            <>
+              <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, status: 'todo' })} className="text-[var(--color-success)] focus:text-[var(--color-success)]">
+                Restore Task
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onDelete?.(task.id)} className="text-[var(--color-overdue)] focus:text-[var(--color-overdue)]">
+                Delete Permanently
+              </DropdownMenuItem>
+            </>
+          ) : (
+            <>
+              <DropdownMenuItem onSelect={() => {
+                 setTimeout(() => {
+                   startEditing()
+                 }, 100)
+              }}>Edit title</DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Set priority</DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 0 })}>None</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 1 })}>Low</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 2 })}>Medium</DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, priority: 3 })}>High</DropdownMenuItem>
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>Move to project</DropdownMenuSubTrigger>
+                <DropdownMenuPortal>
+                  <DropdownMenuSubContent>
+                    <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, project_id: 'inbox-default' })}>
+                      Inbox
+                    </DropdownMenuItem>
+                    {projects.filter(p => p.id !== 'inbox-default').map(p => (
+                      <DropdownMenuItem
+                        key={p.id}
+                        onClick={() => onUpdate?.({ id: task.id, project_id: p.id })}
+                      >
+                        <span style={{ color: p.color }} className="mr-2">●</span>
+                        {p.name}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuSubContent>
+                </DropdownMenuPortal>
+              </DropdownMenuSub>
+              <DropdownMenuItem onClick={() => onDelete?.(task.id)} className="text-[var(--color-overdue)] focus:text-[var(--color-overdue)]">Delete</DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </>

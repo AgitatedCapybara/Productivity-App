@@ -7,19 +7,24 @@ export interface SessionWithDistractions extends Session {
   distractions: Distraction[]
 }
 
-export function createSession(taskId: string): Session {
+export function createSession(input: { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }): Session {
   const db = getDb()
   const id = nanoid(8)
   const startedAt = new Date().toISOString()
+  const taskId = input.taskId || null
+  const projectId = input.projectId || null
+  const targetDurationMins = input.targetDurationMins || 25
   
   const stmt = db.prepare(`
-    INSERT INTO sessions (id, task_id, started_at, status)
-    VALUES (@id, @task_id, @started_at, 'active')
+    INSERT INTO sessions (id, task_id, project_id, target_duration_mins, started_at, status)
+    VALUES (@id, @task_id, @project_id, @target_duration_mins, @started_at, 'active')
   `)
   
   stmt.run({
     id,
     task_id: taskId,
+    project_id: projectId,
+    target_duration_mins: targetDurationMins,
     started_at: startedAt
   })
   
@@ -93,6 +98,12 @@ export function getTodaySessions(): SessionWithDistractions[] {
   })
 }
 
+export function getSessionDistractions(sessionId: string): Distraction[] {
+  const db = getDb()
+  const stmt = db.prepare(`SELECT * FROM distractions WHERE session_id = ? ORDER BY started_at DESC`)
+  return stmt.all(sessionId) as Distraction[]
+}
+
 export function logDistraction(sessionId: string, appName: string, windowTitle: string, startedAt: string): string {
   const db = getDb()
   const id = nanoid(8)
@@ -140,4 +151,14 @@ export function writeTimeToTask(taskId: string, additionalMins: number): void {
     WHERE id = @id
   `)
   stmt.run({ id: taskId, additional_mins: additionalMins })
+}
+
+export function deleteSession(id: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM sessions WHERE id = ?').run(id)
+}
+
+export function clearSessionHistory(): void {
+  const db = getDb()
+  db.prepare('DELETE FROM sessions').run()
 }

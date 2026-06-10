@@ -10,6 +10,7 @@ export interface AppState {
   selectedProjectId: string | null
   quickAddOpen: boolean
   activeSessionId: string | null
+  activeTaskId: string | null
   activeSessionDistractionCount: number
   activeSessionElapsedSeconds: number
   isLoading: boolean
@@ -29,6 +30,7 @@ export interface AppState {
   setSelectedProject: (id: string | null) => void
   setQuickAddOpen: (open: boolean) => void
   setActiveSession: (id: string | null) => void
+  setActiveTaskId: (id: string | null) => void
   setSessionDistractionCount: (n: number) => void
   setSessionElapsedSeconds: (n: number) => void
   selectedTaskIds: string[]
@@ -47,6 +49,7 @@ export const useAppStore = create<AppState>()(immer((set) => ({
   selectedProjectId: null,
   quickAddOpen: false,
   activeSessionId: null,
+  activeTaskId: null,
   activeSessionDistractionCount: 0,
   activeSessionElapsedSeconds: 0,
   selectedTaskIds: [],
@@ -123,6 +126,8 @@ export const useAppStore = create<AppState>()(immer((set) => ({
   setQuickAddOpen: (open) => set((state) => { state.quickAddOpen = open }),
   
   setActiveSession: (id) => set((state) => { state.activeSessionId = id }),
+
+  setActiveTaskId: (id) => set((state) => { state.activeTaskId = id }),
 
   setSessionDistractionCount: (n) => set((state) => { state.activeSessionDistractionCount = n }),
 

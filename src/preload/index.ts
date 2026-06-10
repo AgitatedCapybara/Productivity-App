@@ -5,6 +5,7 @@ import { contextBridge, ipcRenderer, webFrame } from 'electron'
 const api = {
   setZoomRatio: (ratio: number) => webFrame.setZoomFactor(ratio),
   getTasks: () => ipcRenderer.invoke('tasks:getAll'),
+  getDeletedTasks: () => ipcRenderer.invoke('tasks:getDeleted'),
   getTasksDueToday: () => ipcRenderer.invoke('tasks:getDueToday'),
   getTasksUpcoming: () => ipcRenderer.invoke('tasks:getUpcoming'),
   getTasksForToday: () => ipcRenderer.invoke('tasks:getForToday'),
@@ -43,17 +44,44 @@ const api = {
     return () => ipcRenderer.removeListener('focus-session:started', handler)
   },
 
-  startSession: (taskId: string) => ipcRenderer.invoke('focus-session:start', { taskId }),
+  startSession: (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }) => {
+    if (typeof payload === 'string') {
+      return ipcRenderer.invoke('focus-session:start', { taskId: payload })
+    }
+    return ipcRenderer.invoke('focus-session:start', payload)
+  },
   pauseSession: () => ipcRenderer.invoke('focus-session:pause'),
   resumeSession: () => ipcRenderer.invoke('focus-session:resume'),
   stopSession: () => ipcRenderer.invoke('focus-session:stop'),
   getActiveSession: () => ipcRenderer.invoke('focus-session:getActive'),
   getTodaySessions: () => ipcRenderer.invoke('focus-session:getToday'),
+  getSessionDistractions: (sessionId: string) => ipcRenderer.invoke('focus-session:getDistractions', sessionId),
+  getSessionHistory: () => ipcRenderer.invoke('focus-session:getHistory'),
+  deleteSession: (id: string) => ipcRenderer.invoke('focus-session:delete', id),
+  clearSessionHistory: () => ipcRenderer.invoke('focus-session:clearHistory'),
   onSessionDistractionUpdate: (callback: (count: number) => void) => {
     const handler = (_: any, count: number) => callback(count)
     ipcRenderer.on('session:distraction-update', handler)
     return () => ipcRenderer.removeListener('session:distraction-update', handler)
-  }
+  },
+  onSessionDebugCheckTick: (callback: (checksCount: number, isSimulated: boolean) => void) => {
+    const handler = (_: any, data: any) => {
+      if (typeof data === 'object' && data !== null) {
+        callback(data.count, !!data.isSimulated)
+      } else {
+        callback(Number(data) || 0, true)
+      }
+    }
+    ipcRenderer.on('session:debug-check-tick', handler)
+    return () => ipcRenderer.removeListener('session:debug-check-tick', handler)
+  },
+  onSessionStateChanged: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('session:state-changed', handler)
+    return () => ipcRenderer.removeListener('session:state-changed', handler)
+  },
+  getSetting: (key: string, defaultValue: string) => ipcRenderer.invoke('settings:get', key, defaultValue),
+  setSetting: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value)
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

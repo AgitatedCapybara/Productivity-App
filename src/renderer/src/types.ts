@@ -1,6 +1,6 @@
 // KEEP IN SYNC WITH: electron/db/schema.ts
 
-export type TaskStatus = 'todo' | 'in_progress' | 'done'
+export type TaskStatus = 'todo' | 'in_progress' | 'done' | 'deleted'
 export type TaskPriority = 0 | 1 | 2 | 3
 
 export interface Task {
@@ -33,11 +33,13 @@ export interface Project {
 export interface Session {
   id: string
   task_id: string | null
+  project_id: string | null
+  target_duration_mins: number
   started_at: string
   ended_at: string | null
   duration_mins: number
   distraction_count: number
-  status: 'active' | 'completed' | 'cancelled'
+  status: 'active' | 'paused' | 'completed' | 'cancelled'
 }
 
 export interface Distraction {
@@ -90,6 +92,7 @@ export type View = 'today' | 'upcoming' | 'project' | 'habits' | 'analytics' | '
 export interface IElectronAPI {
   setZoomRatio: (ratio: number) => void
   getTasks: () => Promise<Task[]>
+  getDeletedTasks: () => Promise<Task[]>
   getTasksDueToday: () => Promise<Task[]>
   getTasksUpcoming: () => Promise<Task[]>
   getTasksForToday: () => Promise<Task[]>
@@ -112,7 +115,22 @@ export interface IElectronAPI {
   maximizeWindow: () => Promise<void>
   toggleFullscreen: () => Promise<void>
   closeWindow: () => Promise<void>
+  startSession?: (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }) => Promise<Session>
+  pauseSession?: () => Promise<void>
+  resumeSession?: () => Promise<void>
+  stopSession?: () => Promise<any>
+  getActiveSession?: () => Promise<Session | null>
+  getTodaySessions?: () => Promise<any[]>
+  getSessionDistractions?: (sessionId: string) => Promise<any[]>
+  getSessionHistory?: () => Promise<any[]>
+  deleteSession?: (id: string) => Promise<void>
+  clearSessionHistory?: () => Promise<void>
   onGlobalShortcutTriggered: (cb: () => void) => () => void
   onFocusSessionStarted: (cb: (sessionId: string) => void) => () => void
+  onSessionDistractionUpdate: (callback: (count: number) => void) => () => void
+  onSessionDebugCheckTick?: (callback: (count: number, isSimulated: boolean) => void) => () => void
+  onSessionStateChanged: (callback: () => void) => () => void
+  getSetting?: (key: string, defaultValue: string) => Promise<string>
+  setSetting?: (key: string, value: string) => Promise<boolean>
 }
 

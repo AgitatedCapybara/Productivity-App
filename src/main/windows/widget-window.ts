@@ -56,7 +56,11 @@ export function createWidgetWindow(): BrowserWindow {
           const seconds = Math.floor(elapsedMs / 1000)
           
           if (session.status === 'active') {
-            win.webContents.send('session:tick', { seconds, distractionCount: session.distraction_count })
+            win.webContents.send('session:tick', { 
+              seconds, 
+              distractionCount: session.distraction_count,
+              targetDurationMins: (session as any).target_duration_mins || 25
+            })
           }
           lastTrackedSession = session
         } else if (session.status === 'completed' && lastTrackedSession?.id === session.id) {

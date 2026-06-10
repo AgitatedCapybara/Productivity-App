@@ -1,3 +1,4 @@
+// src/main/db/tasks.ts
 import { getDb } from './database'
 import { nanoid } from 'nanoid'
 import type { Task, CreateTaskInput, UpdateTaskInput } from './schema'
@@ -9,17 +10,17 @@ export function getAllTasks(): Task[] {
 
 export function getTasksByProject(projectId: string): Task[] {
   if (projectId === 'inbox-default') {
-    const stmt = getDb().prepare("SELECT * FROM tasks WHERE project_id = 'inbox-default' OR project_id IS NULL ORDER BY sort_order")
+    const stmt = getDb().prepare("SELECT * FROM tasks WHERE (project_id = 'inbox-default' OR project_id IS NULL) AND status != 'deleted' ORDER BY sort_order")
     return stmt.all() as Task[]
   }
-  const stmt = getDb().prepare('SELECT * FROM tasks WHERE project_id = ? ORDER BY sort_order')
+  const stmt = getDb().prepare("SELECT * FROM tasks WHERE project_id = ? AND status != 'deleted' ORDER BY sort_order")
   return stmt.all(projectId) as Task[]
 }
 
 export function getTasksDueToday(): Task[] {
   const stmt = getDb().prepare(`
     SELECT * FROM tasks 
-    WHERE due_date <= date('now', 'localtime') AND status != 'done' 
+    WHERE due_date <= date('now', 'localtime') AND status NOT IN ('done', 'deleted')
     ORDER BY sort_order
   `)
   return stmt.all() as Task[]
@@ -28,7 +29,7 @@ export function getTasksDueToday(): Task[] {
 export function getTasksUpcoming(): Task[] {
   const stmt = getDb().prepare(`
     SELECT * FROM tasks 
-    WHERE due_date > date('now', 'localtime') AND due_date <= date('now', 'localtime', '+7 days') AND status != 'done' 
+    WHERE due_date > date('now', 'localtime') AND due_date <= date('now', 'localtime', '+7 days') AND status NOT IN ('done', 'deleted')
     ORDER BY due_date, sort_order
   `)
   return stmt.all() as Task[]
@@ -41,7 +42,7 @@ export function getTasksForToday(): Task[] {
       (due_date <= date('now', 'localtime')) 
       OR 
       (due_date IS NULL AND (project_id IS NULL OR project_id = 'inbox-default'))
-    ) AND status != 'done'
+    ) AND status NOT IN ('done', 'deleted')
     ORDER BY sort_order
   `)
   return stmt.all() as Task[]
@@ -52,6 +53,15 @@ export function getTodayCompletedTasks(): Task[] {
     SELECT * FROM tasks 
     WHERE status = 'done' AND date(completed_at, 'localtime') = date('now', 'localtime')
     ORDER BY completed_at DESC
+  `)
+  return stmt.all() as Task[]
+}
+
+export function getDeletedTasks(): Task[] {
+  const stmt = getDb().prepare(`
+    SELECT * FROM tasks 
+    WHERE status = 'deleted'
+    ORDER BY updated_at DESC
   `)
   return stmt.all() as Task[]
 }
@@ -128,8 +138,19 @@ export function updateTask(input: UpdateTaskInput): Task {
 }
 
 export function deleteTask(id: string): void {
-  const stmt = getDb().prepare('DELETE FROM tasks WHERE id = ?')
-  stmt.run(id)
+  const db = getDb()
+  const currentTask = db.prepare('SELECT status FROM tasks WHERE id = ?').get(id) as { status: string } | undefined
+  if (currentTask && currentTask.status === 'deleted') {
+    const stmt = db.prepare('DELETE FROM tasks WHERE id = ?')
+    stmt.run(id)
+  } else {
+    const stmt = db.prepare(`
+      UPDATE tasks 
+      SET status = 'deleted', updated_at = datetime('now')
+      WHERE id = ?
+    `)
+    stmt.run(id)
+  }
 }
 
 export function reorderTasks(orderedIds: string[]): void {

@@ -1,7 +1,11 @@
+import { useEffect } from 'react'
 import { Sidebar } from './Sidebar'
 import { TodayView } from '../pages/TodayView'
 import { UpcomingView } from '../pages/UpcomingView'
 import { ProjectView } from '../pages/ProjectView'
+import { FocusWorkspaceView } from '../pages/FocusWorkspaceView'
+import { SettingsView } from '../pages/SettingsView'
+import { AnalyticsView } from './AnalyticsView'
 import { useAppStore } from '../store/useAppStore'
 import { useTasks } from '../hooks/useTasks'
 import { Trash2, X } from 'lucide-react'
@@ -12,6 +16,51 @@ export function MainLayout() {
   const selectedTaskIds = useAppStore(state => state.selectedTaskIds)
   const setSelectedTaskIds = useAppStore(state => state.setSelectedTaskIds)
   const { deleteTask } = useTasks()
+
+  const activeSessionId = useAppStore(state => state.activeSessionId)
+  const setActiveSession = useAppStore(state => state.setActiveSession)
+  const setActiveTaskId = useAppStore(state => state.setActiveTaskId)
+  const setSessionDistractionCount = useAppStore(state => state.setSessionDistractionCount)
+
+  useEffect(() => {
+    if (!window.electronAPI) return
+
+    // 1. Initial State Load
+    window.electronAPI.getActiveSession().then(session => {
+      if (session) {
+        setActiveSession(session.id)
+        setActiveTaskId(session.taskId || (session as any).task_id || null)
+        setSessionDistractionCount(session.distractionCount ?? 0)
+      } else {
+        setActiveSession(null)
+        setActiveTaskId(null)
+      }
+    }).catch(console.error)
+
+    // 2. State Switch Sync (triggered by play, pause, stops in widget or main app)
+    const removeStateListener = window.electronAPI.onSessionStateChanged(() => {
+      window.electronAPI.getActiveSession().then(session => {
+        if (session) {
+          setActiveSession(session.id)
+          setActiveTaskId(session.taskId || (session as any).task_id || null)
+          setSessionDistractionCount(session.distractionCount ?? 0)
+        } else {
+          setActiveSession(null)
+          setActiveTaskId(null)
+        }
+      }).catch(console.error)
+    })
+
+    // 3. Actively Monitored Distractions Listener
+    const removeDistractionListener = window.electronAPI.onSessionDistractionUpdate((count) => {
+      setSessionDistractionCount(count)
+    })
+
+    return () => {
+      if (typeof removeStateListener === 'function') removeStateListener()
+      if (typeof removeDistractionListener === 'function') removeDistractionListener()
+    }
+  }, [])
 
   const handleBulkDelete = () => {
     selectedTaskIds.forEach(id => deleteTask(id))
@@ -33,11 +82,7 @@ export function MainLayout() {
           </div>
         )
       case 'analytics':
-        return (
-          <div className="flex-1 flex items-center justify-center p-8 text-[var(--text-muted)] italic select-none text-xs sm:text-sm h-full" id="analytics-coming-soon">
-            Analytics · Coming in Phase 5
-          </div>
-        )
+        return <AnalyticsView />
       case 'circle':
         return (
           <div className="flex-1 flex items-center justify-center p-8 text-[var(--text-muted)] italic select-none text-xs sm:text-sm h-full" id="circle-coming-soon">
@@ -45,14 +90,14 @@ export function MainLayout() {
           </div>
         )
       case 'settings':
-        return (
-          <div className="flex-1 flex items-center justify-center p-8 text-[var(--text-muted)] italic select-none text-xs sm:text-sm h-full" id="settings-coming-soon">
-            Settings · Coming soon
-          </div>
-        )
+        return <SettingsView />
       default:
         return <TodayView />
     }
+  }
+
+  if (activeSessionId) {
+    return <FocusWorkspaceView />
   }
 
   return (

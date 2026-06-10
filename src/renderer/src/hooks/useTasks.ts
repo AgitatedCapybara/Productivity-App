@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import * as chrono from 'chrono-node'
 import { useAppStore } from '../store/useAppStore'
-import type { CreateTaskInput, UpdateTaskInput } from '../types'
+import type { CreateTaskInput, UpdateTaskInput, Task } from '../types'
 
 export function parseTaskInput(raw: string, keepDateText = false) {
   let title = raw
@@ -93,8 +93,10 @@ export function parseTaskInput(raw: string, keepDateText = false) {
 export function useTasks() {
   const { tasks, completedTasks, error, setTasks, setCompletedTasks, addCompletedTask, addTask, updateTask: updateStoreTask, removeTask, reorderTasks: reorderStoreTasks, setError } = useAppStore()
   const setActiveSession = useAppStore(state => state.setActiveSession)
+  const setActiveTaskId = useAppStore(state => state.setActiveTaskId)
   const setSessionDistractionCount = useAppStore(state => state.setSessionDistractionCount)
   const [isLoading, setLoading] = useState(false)
+  const [deletedTasks, setDeletedTasks] = useState<Task[]>([])
   const activeView = useAppStore(state => state.activeView)
   const selectedProjectId = useAppStore(state => state.selectedProjectId)
 
@@ -108,6 +110,13 @@ export function useTasks() {
     }
     
     try {
+      if (window.electronAPI.getDeletedTasks) {
+        const dl = await window.electronAPI.getDeletedTasks()
+        setDeletedTasks(dl)
+      } else {
+        setDeletedTasks([])
+      }
+
       if (activeView === 'today') {
         const [tasksResult, completedResult] = await Promise.allSettled([
           window.electronAPI.getTasksForToday(),
@@ -137,9 +146,48 @@ export function useTasks() {
     }
   }
 
+  const loadTasksRef = useRef(loadTasks)
+  useEffect(() => {
+    loadTasksRef.current = loadTasks
+  })
+
   useEffect(() => {
     loadTasks()
   }, [activeView, selectedProjectId])
+
+  useEffect(() => {
+    if (!window.electronAPI) return
+
+    const syncActiveSession = () => {
+      if (window.electronAPI.getActiveSession) {
+        window.electronAPI.getActiveSession().then(s => {
+          if (s) {
+            setActiveSession(s.id)
+            setActiveTaskId(s.taskId || (s as any).task_id || null)
+            setSessionDistractionCount(s.distractionCount)
+          } else {
+            setActiveSession(null)
+            setActiveTaskId(null)
+          }
+        }).catch(console.error)
+      }
+    }
+
+    // Call once on mount
+    syncActiveSession()
+
+    // Listen to changes
+    if (window.electronAPI.onSessionStateChanged) {
+      const removeStateListener = window.electronAPI.onSessionStateChanged(() => {
+        syncActiveSession()
+        loadTasksRef.current(true)
+      })
+      return () => {
+        if (typeof removeStateListener === 'function') removeStateListener()
+      }
+    }
+    return undefined
+  }, [setActiveSession, setActiveTaskId, setSessionDistractionCount])
 
   useEffect(() => {
     if (!window.electronAPI || !window.electronAPI.onSessionDistractionUpdate) return
@@ -284,21 +332,26 @@ export function useTasks() {
 
   const deleteTask = async (id: string) => {
     if (!window.electronAPI) {
+      const taskToDelete = tasks.find(t => t.id === id) || completedTasks.find(t => t.id === id) || deletedTasks.find(t => t.id === id)
       removeTask(id)
-      // Also remove from completed just in case they delete from completed section
       useAppStore.setState((state) => {
         const idx = state.completedTasks.findIndex(t => t.id === id)
         if (idx !== -1) state.completedTasks.splice(idx, 1)
       })
+
+      if (taskToDelete) {
+        const alreadyDeleted = deletedTasks.some(t => t.id === id)
+        if (alreadyDeleted) {
+          setDeletedTasks(prev => prev.filter(t => t.id !== id))
+        } else {
+          setDeletedTasks(prev => [...prev, { ...taskToDelete, status: 'deleted' }])
+        }
+      }
       return
     }
     try {
       await window.electronAPI.deleteTask(id)
-      removeTask(id)
-      useAppStore.setState((state) => {
-        const idx = state.completedTasks.findIndex(t => t.id === id)
-        if (idx !== -1) state.completedTasks.splice(idx, 1)
-      })
+      await loadTasks(true)
     } catch (err: any) {
       setError(err.message || 'Failed to delete task')
     }
@@ -316,14 +369,21 @@ export function useTasks() {
     })
   }
 
-  const startSession = async (taskId: string) => {
+  const startSession = async (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }) => {
+    const isString = typeof payload === 'string'
+    const trackingId = isString ? payload : (payload.taskId || payload.projectId || 'project-session')
+    const trackingTaskId = isString ? payload : (payload.taskId || null)
+    
     if (!window.electronAPI) {
-      setActiveSession(taskId)
+      setActiveSession(trackingId)
+      setActiveTaskId(trackingTaskId)
       return null
     }
     try {
-      const session = await window.electronAPI.startSession?.(taskId)
-      setActiveSession(taskId)
+      const session = await window.electronAPI.startSession?.(payload)
+      // Save the actual active session id as state
+      setActiveSession(session?.id || trackingId)
+      setActiveTaskId(session?.taskId || (session as any)?.task_id || trackingTaskId)
       return session
     } catch (err: any) {
       setError(err.message || 'Failed to start session')
@@ -334,19 +394,29 @@ export function useTasks() {
   const stopSession = async () => {
     if (!window.electronAPI) {
       setActiveSession(null)
+      setActiveTaskId(null)
       return
     }
     try {
       await window.electronAPI.stopSession?.()
       setActiveSession(null)
+      setActiveTaskId(null)
     } catch (err: any) {
       setError(err.message || 'Failed to stop session')
     }
   }
 
   return {
-    tasks: [...tasks].sort((a,b) => a.sort_order - b.sort_order),
+    tasks: [...tasks].sort((a, b) => {
+      const pA = a.priority ?? 0
+      const pB = b.priority ?? 0
+      if (pB !== pA) {
+        return pB - pA
+      }
+      return (a.sort_order ?? 0) - (b.sort_order ?? 0)
+    }),
     completedTasks,
+    deletedTasks,
     isLoading,
     error,
     createTask,

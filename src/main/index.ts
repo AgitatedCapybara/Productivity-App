@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url'
 import { createMainWindow, setTrayRef } from './windows/main-window'
 import { createWidgetWindow } from './windows/widget-window'
 import { registerAllHandlers, registerWindowHandlers } from './ipc'
+import { stopMonitoring } from './services/distraction-monitor'
 
 const _dirname = typeof __dirname !== 'undefined'
   ? __dirname
@@ -98,5 +99,10 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  try {
+    stopMonitoring()
+  } catch (err) {
+    // Quiet
+  }
   globalShortcut.unregisterAll()
 })

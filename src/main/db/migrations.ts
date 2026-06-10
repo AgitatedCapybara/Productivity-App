@@ -103,4 +103,24 @@ export function runMigrations(db: Database): void {
     db.exec('PRAGMA user_version = 4')
     user_version = 4
   }
+
+  if (user_version < 5) {
+    db.exec(`
+      ALTER TABLE sessions ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;
+      ALTER TABLE sessions ADD COLUMN target_duration_mins INTEGER DEFAULT 25;
+    `)
+    db.exec('PRAGMA user_version = 5')
+    user_version = 5
+  }
+
+  if (user_version < 6) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+    `)
+    db.exec('PRAGMA user_version = 6')
+    user_version = 6
+  }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CheckSquare, CalendarDays, Flame, Users, Settings } from 'lucide-react'
+import { CheckSquare, CalendarDays, Flame, Users, Settings, BarChart3 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/utils'
 import { View } from '../types'
@@ -89,6 +89,7 @@ export function Sidebar() {
     { id: 'today', icon: CheckSquare },
     { id: 'upcoming', icon: CalendarDays },
     { id: 'habits', icon: Flame },
+    { id: 'analytics', icon: BarChart3 },
     { id: 'circle', icon: Users },
   ]
 

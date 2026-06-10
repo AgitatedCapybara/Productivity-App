@@ -3,6 +3,8 @@ import { IElectronAPI as BaseIElectronAPI } from '../renderer/src/types';
 export interface Session { 
   id: string;
   taskId: string | null;
+  projectId?: string | null;
+  targetDurationMins?: number;
   startedAt: string;
   endedAt: string | null;
   durationMins: number;
@@ -15,13 +17,21 @@ export type SessionWithDistractions = Session & {
 };
 
 export interface IElectronAPI extends BaseIElectronAPI {
-  startSession: (taskId: string) => Promise<Session>;
+  startSession: (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }) => Promise<Session>;
   pauseSession: () => Promise<void>;
   resumeSession: () => Promise<void>;
-  stopSession: () => Promise<{ sessionId: string; taskId: string; durationMins: number; distractionCount: number }>;
+  stopSession: () => Promise<any>;
   getActiveSession: () => Promise<Session | null>;
   getTodaySessions: () => Promise<SessionWithDistractions[]>;
+  getSessionDistractions: (sessionId: string) => Promise<any[]>;
+  getSessionHistory: () => Promise<any[]>;
+  deleteSession: (id: string) => Promise<void>;
+  clearSessionHistory: () => Promise<void>;
   onSessionDistractionUpdate: (callback: (count: number) => void) => () => void;
+  onSessionDebugCheckTick: (callback: (count: number, isSimulated: boolean) => void) => () => void;
+  onSessionStateChanged: (callback: () => void) => () => void;
+  getSetting: (key: string, defaultValue: string) => Promise<string>;
+  setSetting: (key: string, value: string) => Promise<boolean>;
 }
 
 export interface IWidgetAPI {
@@ -29,7 +39,7 @@ export interface IWidgetAPI {
   pauseSession: () => Promise<void>;
   resumeSession: () => Promise<void>;
   stopSession: () => Promise<{ sessionId: string; taskId: string; durationMins: number; distractionCount: number }>;
-  onSessionTick: (callback: (elapsed: { seconds: number; distractionCount: number }) => void) => () => void;
+  onSessionTick: (callback: (elapsed: { seconds: number; distractionCount: number; targetDurationMins?: number }) => void) => () => void;
   onSessionStopped: (callback: (summary: { durationMins: number; distractionCount: number }) => void) => () => void;
 }
 

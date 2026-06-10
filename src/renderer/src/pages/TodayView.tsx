@@ -2,17 +2,80 @@ import { useMemo, useEffect, useState } from 'react'
 import { format } from 'date-fns'
 import { useTasks } from '../hooks/useTasks'
 import { QuickAdd } from '../components/tasks/QuickAdd'
+import { SessionQuickStart } from '../components/tasks/SessionQuickStart'
 import { TaskSection } from '../components/tasks/TaskSection'
+import { Trash2 } from 'lucide-react'
 
 export function TodayView() {
-  const { tasks, completedTasks, isLoading, error } = useTasks()
+  const { tasks, completedTasks, deletedTasks, isLoading, error } = useTasks()
   const [todaySessions, setTodaySessions] = useState<any[]>([])
+  
+  // Safe confirmation states (instead of blocking window.confirm)
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
+  const [isConfirmingClear, setIsConfirmingClear] = useState(false)
 
-  useEffect(() => {
+  const fetchTodaySessions = () => {
     if (window.electronAPI && window.electronAPI.getTodaySessions) {
       window.electronAPI.getTodaySessions().then(setTodaySessions).catch(console.error)
     }
+  }
+
+  const handleDeleteSession = async (id: string) => {
+    if (confirmingDeleteId !== id) {
+      setConfirmingDeleteId(id)
+      return
+    }
+    if (window.electronAPI && window.electronAPI.deleteSession) {
+      await window.electronAPI.deleteSession(id)
+      setConfirmingDeleteId(null)
+      fetchTodaySessions()
+    }
+  }
+
+  const handleClearHistory = async () => {
+    if (!isConfirmingClear) {
+      setIsConfirmingClear(true)
+      return
+    }
+    if (window.electronAPI && window.electronAPI.clearSessionHistory) {
+      await window.electronAPI.clearSessionHistory()
+      setIsConfirmingClear(false)
+      fetchTodaySessions()
+    }
+  }
+
+  useEffect(() => {
+    fetchTodaySessions()
+
+    if (window.electronAPI && window.electronAPI.onSessionStateChanged) {
+      const removeStateListener = window.electronAPI.onSessionStateChanged(() => {
+        fetchTodaySessions()
+      })
+      return () => {
+        if (typeof removeStateListener === 'function') removeStateListener()
+      }
+    }
+    return undefined
   }, [])
+
+  const getSessionDurationString = (session: any) => {
+    if (session.started_at && session.ended_at) {
+      const start = new Date(session.started_at).getTime()
+      const end = new Date(session.ended_at).getTime()
+      const diffSeconds = Math.floor((end - start) / 1000)
+      
+      if (diffSeconds < 0) return '0s'
+      
+      const mins = Math.floor(diffSeconds / 60)
+      const secs = diffSeconds % 60
+      
+      if (mins === 0) {
+        return `${secs}s`
+      }
+      return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`
+    }
+    return `${session.duration_mins || 0}m`
+  }
 
   const todayStr = format(new Date(), 'yyyy-MM-dd')
 
@@ -51,6 +114,9 @@ export function TodayView() {
 
         {/* Input */}
         <QuickAdd />
+        
+        {/* Custom Focus Session Quick Start Picker */}
+        <SessionQuickStart />
 
         {/* Sections */}
         {isLoading ? (
@@ -89,21 +155,65 @@ export function TodayView() {
               accentColor="var(--text-muted)" 
               defaultOpen={false} 
             />
+            
+            <TaskSection 
+              title="Deleted" 
+              tasks={deletedTasks || []} 
+              accentColor="var(--color-overdue)" 
+              defaultOpen={false} 
+            />
 
             {todaySessions.length > 0 && (
               <div className="mt-8 mb-4">
-                <h3 className="text-sm font-semibold tracking-tight text-[var(--text-secondary)] mb-3 select-none flex items-center gap-2">
-                  Today's Sessions
-                </h3>
+                <div className="flex items-center justify-between mb-3 select-none">
+                  <h3 className="text-sm font-semibold tracking-tight text-[var(--text-secondary)] flex items-center gap-2">
+                    Today's Sessions
+                  </h3>
+                  <button 
+                    onClick={handleClearHistory}
+                    onMouseLeave={() => setIsConfirmingClear(false)}
+                    className={`text-xs flex items-center gap-1.5 px-2 py-1 rounded-md border transition-all duration-150 ${
+                      isConfirmingClear 
+                        ? 'bg-[var(--color-overdue)]/10 text-[var(--color-overdue)] border-[var(--color-overdue)]/30 font-medium' 
+                        : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border-transparent hover:bg-[var(--bg-elevated)]'
+                    }`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    {isConfirmingClear ? 'Confirm Clear?' : 'Clear History'}
+                  </button>
+                </div>
                 <div className="space-y-2">
                   {todaySessions.map((session, i) => (
-                    <div key={session.id || i} className="flex items-center justify-between text-sm py-2 px-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)]">
-                      <span className="text-[var(--text-primary)] font-medium truncate max-w-[50%]">
+                    <div 
+                      key={session.id || i} 
+                      className="group flex items-center justify-between text-sm py-2 px-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-[var(--text-muted)]/30 transition-all duration-150"
+                    >
+                      <span className="text-[var(--text-primary)] font-medium truncate max-w-[55%]">
                         {session.task_title || (tasks.find(t => t.id === session.task_id)?.title) || 'Focus Session'}
                       </span>
-                      <span className="text-[var(--text-secondary)] text-xs">
-                        {session.duration_mins || 0}m · {session.distraction_count || 0} distractions
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-[var(--text-secondary)] text-xs select-none">
+                          {getSessionDurationString(session)} · {session.distraction_count || 0} distraction{session.distraction_count === 1 ? '' : 's'}
+                        </span>
+                        
+                        <button
+                          onClick={() => handleDeleteSession(session.id)}
+                          onMouseLeave={() => {
+                            if (confirmingDeleteId === session.id) setConfirmingDeleteId(null)
+                          }}
+                          className={`flex items-center rounded transition-all duration-150 ${
+                            confirmingDeleteId === session.id
+                              ? 'opacity-100 bg-[var(--color-overdue)]/15 text-[var(--color-overdue)] px-1.5 py-0.5 border border-[var(--color-overdue)]/30'
+                              : 'opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-[var(--color-overdue)] hover:bg-[var(--bg-elevated)]'
+                          }`}
+                          title={confirmingDeleteId === session.id ? "Click again to delete" : "Delete session"}
+                        >
+                          <span className="flex items-center gap-1 text-[11px] font-semibold leading-none">
+                            {confirmingDeleteId === session.id && <span>Confirm?</span>}
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </span>
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>
