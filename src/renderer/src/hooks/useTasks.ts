@@ -94,7 +94,7 @@ export function useTasks() {
   const { tasks, completedTasks, error, setTasks, setCompletedTasks, addCompletedTask, addTask, updateTask: updateStoreTask, removeTask, reorderTasks: reorderStoreTasks, setError } = useAppStore()
   const setActiveSession = useAppStore(state => state.setActiveSession)
   const setActiveTaskId = useAppStore(state => state.setActiveTaskId)
-  const setSessionDistractionCount = useAppStore(state => state.setSessionDistractionCount)
+  const tasksRevision = useAppStore(state => state.tasksRevision)
   const [isLoading, setLoading] = useState(false)
   const [deletedTasks, setDeletedTasks] = useState<Task[]>([])
   const activeView = useAppStore(state => state.activeView)
@@ -153,51 +153,7 @@ export function useTasks() {
 
   useEffect(() => {
     loadTasks()
-  }, [activeView, selectedProjectId])
-
-  useEffect(() => {
-    if (!window.electronAPI) return
-
-    const syncActiveSession = () => {
-      if (window.electronAPI.getActiveSession) {
-        window.electronAPI.getActiveSession().then(s => {
-          if (s) {
-            setActiveSession(s.id)
-            setActiveTaskId(s.taskId || (s as any).task_id || null)
-            setSessionDistractionCount(s.distractionCount)
-          } else {
-            setActiveSession(null)
-            setActiveTaskId(null)
-          }
-        }).catch(console.error)
-      }
-    }
-
-    // Call once on mount
-    syncActiveSession()
-
-    // Listen to changes
-    if (window.electronAPI.onSessionStateChanged) {
-      const removeStateListener = window.electronAPI.onSessionStateChanged(() => {
-        syncActiveSession()
-        loadTasksRef.current(true)
-      })
-      return () => {
-        if (typeof removeStateListener === 'function') removeStateListener()
-      }
-    }
-    return undefined
-  }, [setActiveSession, setActiveTaskId, setSessionDistractionCount])
-
-  useEffect(() => {
-    if (!window.electronAPI || !window.electronAPI.onSessionDistractionUpdate) return
-    const removeListener = window.electronAPI.onSessionDistractionUpdate((count: number) => {
-      setSessionDistractionCount(count)
-    })
-    return () => {
-      if (typeof removeListener === 'function') removeListener()
-    }
-  }, [setSessionDistractionCount])
+  }, [activeView, selectedProjectId, tasksRevision])
 
   const createTask = async (title: string, extra?: Partial<CreateTaskInput> & { isManuallyOverridden?: boolean }) => {
     try {

@@ -4,15 +4,26 @@ import { useTasks } from '../hooks/useTasks'
 import { QuickAdd } from '../components/tasks/QuickAdd'
 import { SessionQuickStart } from '../components/tasks/SessionQuickStart'
 import { TaskSection } from '../components/tasks/TaskSection'
-import { Trash2 } from 'lucide-react'
+import { Trash2, Pencil, Check, X } from 'lucide-react'
+import { useAppStore } from '../store/useAppStore'
 
 export function TodayView() {
   const { tasks, completedTasks, deletedTasks, isLoading, error } = useTasks()
   const [todaySessions, setTodaySessions] = useState<any[]>([])
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
+  const [editingSessionName, setEditingSessionName] = useState<string>('')
   
+  const setActiveView = useAppStore(state => state.setActiveView)
+  const setPreselectedSessionId = useAppStore(state => state.setPreselectedSessionId)
+
   // Safe confirmation states (instead of blocking window.confirm)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [isConfirmingClear, setIsConfirmingClear] = useState(false)
+
+  const handleSessionClick = (sessionId: string) => {
+    setPreselectedSessionId(sessionId)
+    setActiveView('analytics')
+  }
 
   const fetchTodaySessions = () => {
     if (window.electronAPI && window.electronAPI.getTodaySessions) {
@@ -183,39 +194,117 @@ export function TodayView() {
                   </button>
                 </div>
                 <div className="space-y-2">
-                  {todaySessions.map((session, i) => (
-                    <div 
-                      key={session.id || i} 
-                      className="group flex items-center justify-between text-sm py-2 px-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-[var(--text-muted)]/30 transition-all duration-150"
-                    >
-                      <span className="text-[var(--text-primary)] font-medium truncate max-w-[55%]">
-                        {session.task_title || (tasks.find(t => t.id === session.task_id)?.title) || 'Focus Session'}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <span className="text-[var(--text-secondary)] text-xs select-none">
-                          {getSessionDurationString(session)} · {session.distraction_count || 0} distraction{session.distraction_count === 1 ? '' : 's'}
-                        </span>
-                        
-                        <button
-                          onClick={() => handleDeleteSession(session.id)}
-                          onMouseLeave={() => {
-                            if (confirmingDeleteId === session.id) setConfirmingDeleteId(null)
-                          }}
-                          className={`flex items-center rounded transition-all duration-150 ${
-                            confirmingDeleteId === session.id
-                              ? 'opacity-100 bg-[var(--color-overdue)]/15 text-[var(--color-overdue)] px-1.5 py-0.5 border border-[var(--color-overdue)]/30'
-                              : 'opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-[var(--color-overdue)] hover:bg-[var(--bg-elevated)]'
-                          }`}
-                          title={confirmingDeleteId === session.id ? "Click again to delete" : "Delete session"}
-                        >
-                          <span className="flex items-center gap-1 text-[11px] font-semibold leading-none">
-                            {confirmingDeleteId === session.id && <span>Confirm?</span>}
-                            <Trash2 className="w-3.5 h-3.5" />
+                  {todaySessions.map((session, i) => {
+                    const sessionName = session.customName || session.custom_name || session.task_title || (tasks.find(t => t.id === session.task_id)?.title) || 'Focus Session';
+                    const isEditing = editingSessionId === session.id;
+
+                    return (
+                      <div 
+                        key={session.id || i} 
+                        onClick={() => !isEditing && handleSessionClick(session.id)}
+                        className="group flex items-center justify-between text-sm py-2 px-3 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] hover:border-indigo-500/45 hover:bg-zinc-800/40 active:scale-[0.99] cursor-pointer transition-all duration-150"
+                      >
+                        {isEditing ? (
+                          <form
+                            onSubmit={async (e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              if (editingSessionName.trim() && window.electronAPI && window.electronAPI.renameSession) {
+                                await window.electronAPI.renameSession(session.id, editingSessionName.trim())
+                                setEditingSessionId(null)
+                                fetchTodaySessions()
+                              }
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1.5 flex-1 max-w-[65%]"
+                          >
+                            <input
+                              type="text"
+                              value={editingSessionName}
+                              onChange={(e) => setEditingSessionName(e.target.value)}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === 'Escape') {
+                                  e.preventDefault()
+                                  setEditingSessionId(null)
+                                }
+                              }}
+                              className="bg-zinc-800 text-white border border-indigo-500/50 rounded-md px-2 py-0.5 text-xs w-full focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            />
+                            <button
+                              type="submit"
+                              className="p-1 hover:bg-zinc-700/80 rounded text-emerald-400 transition"
+                            >
+                              <Check className="w-3.5 h-3.5 animate-pulse" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingSessionId(null)
+                              }}
+                              className="p-1 hover:bg-zinc-700/80 rounded text-rose-400 transition"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </form>
+                        ) : (
+                          <span 
+                            onClick={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => {
+                              e.stopPropagation()
+                              setEditingSessionId(session.id)
+                              setEditingSessionName(sessionName)
+                            }}
+                            className="text-[var(--text-primary)] font-medium truncate max-w-[55%] group-hover:text-white transition-colors"
+                            title="Double-click to rename"
+                          >
+                            {sessionName}
                           </span>
-                        </button>
+                        )}
+                        <div className="flex items-center gap-3">
+                          <span className="text-[var(--text-secondary)] text-xs select-none">
+                            {getSessionDurationString(session)} · {session.distraction_count || 0} distraction{session.distraction_count === 1 ? '' : 's'}
+                          </span>
+                          
+                          {!isEditing && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setEditingSessionId(session.id)
+                                setEditingSessionName(sessionName)
+                              }}
+                              className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-indigo-400 hover:bg-[var(--bg-elevated)] rounded transition-all duration-150"
+                              title="Rename focus session"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteSession(session.id)
+                            }}
+                            onMouseLeave={() => {
+                              if (confirmingDeleteId === session.id) setConfirmingDeleteId(null)
+                            }}
+                            className={`flex items-center rounded transition-all duration-150 ${
+                              confirmingDeleteId === session.id
+                                ? 'opacity-100 bg-[var(--color-overdue)]/15 text-[var(--color-overdue)] px-1.5 py-0.5 border border-[var(--color-overdue)]/30'
+                                : 'opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-[var(--color-overdue)] hover:bg-[var(--bg-elevated)]'
+                            }`}
+                            title={confirmingDeleteId === session.id ? "Click again to delete" : "Delete session"}
+                          >
+                            <span className="flex items-center gap-1 text-[11px] font-semibold leading-none">
+                              {confirmingDeleteId === session.id && <span>Confirm?</span>}
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}

@@ -162,3 +162,33 @@ export function clearSessionHistory(): void {
   const db = getDb()
   db.prepare('DELETE FROM sessions').run()
 }
+
+export function updateSessionReflection(sessionId: string, reflection: string, clarityRating: number, energyRating: number): void {
+  const db = getDb()
+  const stmt = db.prepare(`
+    UPDATE sessions 
+    SET reflection = @reflection,
+        clarity_rating = @clarity_rating,
+        energy_rating = @energy_rating
+    WHERE id = @id
+  `)
+  stmt.run({
+    id: sessionId,
+    reflection,
+    clarity_rating: clarityRating,
+    energy_rating: energyRating
+  })
+}
+
+export function renameSession(sessionId: string, customName: string): void {
+  const db = getDb()
+  const stmt = db.prepare(`
+    UPDATE sessions 
+    SET custom_name = @custom_name
+    WHERE id = @id
+  `)
+  stmt.run({
+    id: sessionId,
+    custom_name: customName
+  })
+}

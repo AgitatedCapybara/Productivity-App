@@ -40,6 +40,10 @@ export interface Session {
   duration_mins: number
   distraction_count: number
   status: 'active' | 'paused' | 'completed' | 'cancelled'
+  reflection?: string
+  clarity_rating?: number | null
+  energy_rating?: number | null
+  custom_name?: string | null
 }
 
 export interface Distraction {

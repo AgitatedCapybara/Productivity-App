@@ -13,6 +13,8 @@ export interface AppState {
   activeTaskId: string | null
   activeSessionDistractionCount: number
   activeSessionElapsedSeconds: number
+  recentFocusSummary: any | null
+  preselectedSessionId: string | null
   isLoading: boolean
   error: string | null
   setTasks: (tasks: Task[]) => void
@@ -31,6 +33,8 @@ export interface AppState {
   setQuickAddOpen: (open: boolean) => void
   setActiveSession: (id: string | null) => void
   setActiveTaskId: (id: string | null) => void
+  setRecentFocusSummary: (summary: any | null) => void
+  setPreselectedSessionId: (id: string | null) => void
   setSessionDistractionCount: (n: number) => void
   setSessionElapsedSeconds: (n: number) => void
   selectedTaskIds: string[]
@@ -39,6 +43,8 @@ export interface AppState {
   setLastSelectedTaskId: (id: string | null) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
+  tasksRevision: number
+  incrementTasksRevision: () => void
 }
 
 export const useAppStore = create<AppState>()(immer((set) => ({
@@ -52,11 +58,15 @@ export const useAppStore = create<AppState>()(immer((set) => ({
   activeTaskId: null,
   activeSessionDistractionCount: 0,
   activeSessionElapsedSeconds: 0,
+  recentFocusSummary: null,
+  preselectedSessionId: null,
   selectedTaskIds: [],
   lastSelectedTaskId: null,
   isLoading: false,
   error: null,
+  tasksRevision: 0,
 
+  incrementTasksRevision: () => set((state) => { state.tasksRevision += 1 }),
   setSelectedTaskIds: (ids) => set((state) => { state.selectedTaskIds = ids }),
   setLastSelectedTaskId: (id) => set((state) => { state.lastSelectedTaskId = id }),
 
@@ -128,6 +138,10 @@ export const useAppStore = create<AppState>()(immer((set) => ({
   setActiveSession: (id) => set((state) => { state.activeSessionId = id }),
 
   setActiveTaskId: (id) => set((state) => { state.activeTaskId = id }),
+
+  setRecentFocusSummary: (summary) => set((state) => { state.recentFocusSummary = summary }),
+
+  setPreselectedSessionId: (id) => set((state) => { state.preselectedSessionId = id }),
 
   setSessionDistractionCount: (n) => set((state) => { state.activeSessionDistractionCount = n }),
 

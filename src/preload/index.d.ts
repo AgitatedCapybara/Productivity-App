@@ -10,6 +10,8 @@ export interface Session {
   durationMins: number;
   distractionCount: number;
   status: 'active' | 'paused' | 'completed' | 'cancelled';
+  customName?: string | null;
+  custom_name?: string | null;
 }
 
 export type SessionWithDistractions = Session & { 
@@ -27,9 +29,11 @@ export interface IElectronAPI extends BaseIElectronAPI {
   getSessionHistory: () => Promise<any[]>;
   deleteSession: (id: string) => Promise<void>;
   clearSessionHistory: () => Promise<void>;
+  renameSession: (sessionId: string, customName: string) => Promise<void>;
   onSessionDistractionUpdate: (callback: (count: number) => void) => () => void;
   onSessionDebugCheckTick: (callback: (count: number, isSimulated: boolean) => void) => () => void;
   onSessionStateChanged: (callback: () => void) => () => void;
+  onSessionEnded: (callback: (summary: any) => void) => () => void;
   getSetting: (key: string, defaultValue: string) => Promise<string>;
   setSetting: (key: string, value: string) => Promise<boolean>;
 }

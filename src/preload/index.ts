@@ -1,6 +1,9 @@
 // src/preload/index.ts
 import { contextBridge, ipcRenderer, webFrame } from 'electron'
 
+// Increase EventEmitter limit on the frontend to avoid cosmetic warnings during hot-reloads or multi-component subscriptions
+ipcRenderer.setMaxListeners(50)
+
 // Custom APIs for renderer
 const api = {
   setZoomRatio: (ratio: number) => webFrame.setZoomFactor(ratio),
@@ -59,6 +62,10 @@ const api = {
   getSessionHistory: () => ipcRenderer.invoke('focus-session:getHistory'),
   deleteSession: (id: string) => ipcRenderer.invoke('focus-session:delete', id),
   clearSessionHistory: () => ipcRenderer.invoke('focus-session:clearHistory'),
+  updateSessionReflection: (sessionId: string, reflection: string, clarityRating: number, energyRating: number) => 
+    ipcRenderer.invoke('focus-session:updateReflection', { sessionId, reflection, clarityRating, energyRating }),
+  renameSession: (sessionId: string, customName: string) => 
+    ipcRenderer.invoke('focus-session:rename', { sessionId, customName }),
   onSessionDistractionUpdate: (callback: (count: number) => void) => {
     const handler = (_: any, count: number) => callback(count)
     ipcRenderer.on('session:distraction-update', handler)
@@ -79,6 +86,11 @@ const api = {
     const handler = () => callback()
     ipcRenderer.on('session:state-changed', handler)
     return () => ipcRenderer.removeListener('session:state-changed', handler)
+  },
+  onSessionEnded: (callback: (summary: any) => void) => {
+    const handler = (_: any, summary: any) => callback(summary)
+    ipcRenderer.on('session:ended', handler)
+    return () => ipcRenderer.removeListener('session:ended', handler)
   },
   getSetting: (key: string, defaultValue: string) => ipcRenderer.invoke('settings:get', key, defaultValue),
   setSetting: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value)

@@ -123,4 +123,22 @@ export function runMigrations(db: Database): void {
     db.exec('PRAGMA user_version = 6')
     user_version = 6
   }
+
+  if (user_version < 7) {
+    db.exec(`
+      ALTER TABLE sessions ADD COLUMN reflection TEXT DEFAULT '';
+      ALTER TABLE sessions ADD COLUMN clarity_rating INTEGER DEFAULT NULL;
+      ALTER TABLE sessions ADD COLUMN energy_rating INTEGER DEFAULT NULL;
+    `)
+    db.exec('PRAGMA user_version = 7')
+    user_version = 7
+  }
+
+  if (user_version < 8) {
+    db.exec(`
+      ALTER TABLE sessions ADD COLUMN custom_name TEXT DEFAULT NULL;
+    `)
+    db.exec('PRAGMA user_version = 8')
+    user_version = 8
+  }
 }

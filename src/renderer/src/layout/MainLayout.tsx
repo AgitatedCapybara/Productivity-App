@@ -6,6 +6,7 @@ import { ProjectView } from '../pages/ProjectView'
 import { FocusWorkspaceView } from '../pages/FocusWorkspaceView'
 import { SettingsView } from '../pages/SettingsView'
 import { AnalyticsView } from './AnalyticsView'
+import { PostSessionOverview } from '../components/tasks/PostSessionOverview'
 import { useAppStore } from '../store/useAppStore'
 import { useTasks } from '../hooks/useTasks'
 import { Trash2, X } from 'lucide-react'
@@ -21,6 +22,8 @@ export function MainLayout() {
   const setActiveSession = useAppStore(state => state.setActiveSession)
   const setActiveTaskId = useAppStore(state => state.setActiveTaskId)
   const setSessionDistractionCount = useAppStore(state => state.setSessionDistractionCount)
+  const recentFocusSummary = useAppStore(state => state.recentFocusSummary)
+  const setRecentFocusSummary = useAppStore(state => state.setRecentFocusSummary)
 
   useEffect(() => {
     if (!window.electronAPI) return
@@ -39,6 +42,7 @@ export function MainLayout() {
 
     // 2. State Switch Sync (triggered by play, pause, stops in widget or main app)
     const removeStateListener = window.electronAPI.onSessionStateChanged(() => {
+      useAppStore.getState().incrementTasksRevision()
       window.electronAPI.getActiveSession().then(session => {
         if (session) {
           setActiveSession(session.id)
@@ -56,9 +60,18 @@ export function MainLayout() {
       setSessionDistractionCount(count)
     })
 
+    // 4. Session Ended Listener
+    const removeSessionEndedListener = window.electronAPI.onSessionEnded
+      ? window.electronAPI.onSessionEnded((summary) => {
+          console.log('[MAIN LAYOUT] Session ended with summary:', JSON.stringify(summary))
+          useAppStore.getState().setRecentFocusSummary(summary)
+        })
+      : null
+
     return () => {
       if (typeof removeStateListener === 'function') removeStateListener()
       if (typeof removeDistractionListener === 'function') removeDistractionListener()
+      if (typeof removeSessionEndedListener === 'function') removeSessionEndedListener()
     }
   }, [])
 
@@ -94,6 +107,17 @@ export function MainLayout() {
       default:
         return <TodayView />
     }
+  }
+
+  if (recentFocusSummary) {
+    const targetMins = recentFocusSummary.targetMinutes || recentFocusSummary.target_duration_mins || 25
+    return (
+      <PostSessionOverview 
+        summary={recentFocusSummary}
+        targetMinutes={targetMins}
+        onClose={() => setRecentFocusSummary(null)}
+      />
+    )
   }
 
   if (activeSessionId) {

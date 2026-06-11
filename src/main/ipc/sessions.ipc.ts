@@ -10,7 +10,9 @@ import {
   getSessionDistractions,
   writeTimeToTask,
   deleteSession,
-  clearSessionHistory
+  clearSessionHistory,
+  updateSessionReflection,
+  renameSession
 } from '../db/sessions'
 import { startMonitoring, stopMonitoring } from '../services/distraction-monitor'
 import { getDb } from '../db/database'
@@ -21,6 +23,15 @@ function notifyWindowsOfStateChange() {
   for (const win of windows) {
     if (!win.isDestroyed()) {
       win.webContents.send('session:state-changed')
+    }
+  }
+}
+
+function notifyWindowsOfSessionEnded(summary: any) {
+  const windows = BrowserWindow.getAllWindows()
+  for (const win of windows) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('session:ended', summary)
     }
   }
 }
@@ -36,6 +47,7 @@ function mapSessionToDualCase(session: any): any {
     endedAt: session.ended_at,
     durationMins: session.duration_mins,
     distractionCount: session.distraction_count,
+    customName: session.custom_name,
     
     task_id: session.task_id,
     project_id: session.project_id,
@@ -43,7 +55,8 @@ function mapSessionToDualCase(session: any): any {
     started_at: session.started_at,
     ended_at: session.ended_at,
     duration_mins: session.duration_mins,
-    distraction_count: session.distraction_count
+    distraction_count: session.distraction_count,
+    custom_name: session.custom_name
   }
 }
 
@@ -107,6 +120,13 @@ function calculateSessionMetrics(session: any, distractionsList: any[]): any {
     averageFocusStreakSeconds,
     distractionCount,
     topDistractions,
+    reflection: session.reflection ?? '',
+    clarityRating: session.clarity_rating ?? null,
+    energyRating: session.energy_rating ?? null,
+    clarity_rating: session.clarity_rating ?? null,
+    energy_rating: session.energy_rating ?? null,
+    customName: session.custom_name ?? null,
+    custom_name: session.custom_name ?? null,
     distractions: distractionsList.map(d => ({
       id: d.id,
       sessionId: d.session_id || d.sessionId,
@@ -165,7 +185,9 @@ export function registerSessionHandlers() {
     notifyWindowsOfStateChange()
     
     const distractionsList = getSessionDistractions(updatedSession.id)
-    return calculateSessionMetrics(updatedSession, distractionsList)
+    const summary = calculateSessionMetrics(updatedSession, distractionsList)
+    notifyWindowsOfSessionEnded(summary)
+    return summary
   })
 
   ipcMain.handle('focus-session:getActive', async () => {
@@ -239,5 +261,16 @@ export function registerSessionHandlers() {
   ipcMain.handle('focus-session:clearHistory', async () => {
     clearSessionHistory()
     notifyWindowsOfStateChange()
+  })
+
+  ipcMain.handle('focus-session:updateReflection', async (_, payload: { sessionId: string; reflection: string; clarityRating: number; energyRating: number }) => {
+    updateSessionReflection(payload.sessionId, payload.reflection, payload.clarityRating, payload.energyRating)
+    notifyWindowsOfStateChange()
+  })
+
+  ipcMain.handle('focus-session:rename', async (_, payload: { sessionId: string; customName: string }) => {
+    renameSession(payload.sessionId, payload.customName)
+    notifyWindowsOfStateChange()
+    return { success: true }
   })
 }

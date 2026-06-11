@@ -40,6 +40,11 @@ export interface Session {
   duration_mins: number
   distraction_count: number
   status: 'active' | 'paused' | 'completed' | 'cancelled'
+  reflection?: string
+  clarity_rating?: number | null
+  energy_rating?: number | null
+  custom_name?: string | null
+  customName?: string | null
 }
 
 export interface Distraction {
@@ -125,11 +130,14 @@ export interface IElectronAPI {
   getSessionHistory?: () => Promise<any[]>
   deleteSession?: (id: string) => Promise<void>
   clearSessionHistory?: () => Promise<void>
+  updateSessionReflection?: (sessionId: string, reflection: string, clarityRating: number, energyRating: number) => Promise<void>
+  renameSession?: (sessionId: string, customName: string) => Promise<void>
   onGlobalShortcutTriggered: (cb: () => void) => () => void
   onFocusSessionStarted: (cb: (sessionId: string) => void) => () => void
   onSessionDistractionUpdate: (callback: (count: number) => void) => () => void
   onSessionDebugCheckTick?: (callback: (count: number, isSimulated: boolean) => void) => () => void
   onSessionStateChanged: (callback: () => void) => () => void
+  onSessionEnded?: (callback: (summary: any) => void) => () => void
   getSetting?: (key: string, defaultValue: string) => Promise<string>
   setSetting?: (key: string, value: string) => Promise<boolean>
 }
