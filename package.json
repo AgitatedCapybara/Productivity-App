@@ -1,14 +1,16 @@
 {
-  "name": "react-example",
+  "name": "productivity-app",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "lint": "tsc --noEmit || echo 'Some type errors but continuing'"
+    "lint": "tsc --noEmit || echo 'Some type errors but continuing'",
+    "postinstall": "electron-builder install-app-deps",
+    "pack-win": "npm run build && electron-builder --win --x64"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -45,7 +47,7 @@
     "@types/recharts": "^1.8.29",
     "autoprefixer": "^10.4.21",
     "electron": "^32.3.3",
-    "electron-builder": "^26.8.1",
+    "electron-builder": "^26.15.2",
     "electron-vite": "^5.0.0",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
@@ -54,5 +56,28 @@
     "vite": "^6.2.3",
     "vite-plugin-electron": "^1.0.0",
     "vite-plugin-electron-renderer": "^1.0.0"
+  },
+  "build": {
+    "appId": "com.donth.productivityapp",
+    "productName": "ProductivityApp",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

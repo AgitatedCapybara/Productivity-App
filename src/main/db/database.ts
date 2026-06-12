@@ -3,8 +3,6 @@ import { app } from 'electron'
 import { join } from 'path'
 import { runMigrations } from './migrations'
 
-// We use `any` here or type it to allow keeping the same type shape.
-// The true type is `import('better-sqlite3').Database`.
 let dbInstance: any = null
 
 export function getDb(): import('better-sqlite3').Database {
@@ -12,7 +10,8 @@ export function getDb(): import('better-sqlite3').Database {
     return dbInstance
   }
 
-  const dbPath = process.env.NODE_ENV === 'development' 
+  // Use app.isPackaged—it's a bulletproof way to check if running as a compiled .exe
+  const dbPath = !app.isPackaged 
     ? 'dev.sqlite' 
     : join(app.getPath('userData'), 'app.db')
 
