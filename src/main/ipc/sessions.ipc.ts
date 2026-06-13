@@ -18,21 +18,33 @@ import { startMonitoring, stopMonitoring } from '../services/distraction-monitor
 import { getDb } from '../db/database'
 import type { Session } from '../db/schema'
 
-function notifyWindowsOfStateChange() {
+async function notifyWindowsOfStateChange() {
   const windows = BrowserWindow.getAllWindows()
   for (const win of windows) {
     if (!win.isDestroyed()) {
       win.webContents.send('session:state-changed')
     }
   }
+  try {
+    const { syncWidgetVisibility } = await import('../windows/widget-window')
+    syncWidgetVisibility()
+  } catch (err) {
+    console.error('Failed to sync widget visibility:', err)
+  }
 }
 
-function notifyWindowsOfSessionEnded(summary: any) {
+async function notifyWindowsOfSessionEnded(summary: any) {
   const windows = BrowserWindow.getAllWindows()
   for (const win of windows) {
     if (!win.isDestroyed()) {
       win.webContents.send('session:ended', summary)
     }
+  }
+  try {
+    const { syncWidgetVisibility } = await import('../windows/widget-window')
+    syncWidgetVisibility()
+  } catch (err) {
+    console.error('Failed to sync widget visibility on session end:', err)
   }
 }
 
@@ -264,8 +276,19 @@ export function registerSessionHandlers() {
   })
 
   ipcMain.handle('focus-session:updateReflection', async (_, payload: { sessionId: string; reflection: string; clarityRating: number; energyRating: number }) => {
-    updateSessionReflection(payload.sessionId, payload.reflection, payload.clarityRating, payload.energyRating)
-    notifyWindowsOfStateChange()
+    try {
+      console.log('[SESSIONS IPC] focus-session:updateReflection called with payload:', JSON.stringify(payload))
+      if (!payload.sessionId) {
+        throw new Error('[SESSIONS IPC] updateReflection: sessionId is missing in payload')
+      }
+      updateSessionReflection(payload.sessionId, payload.reflection, payload.clarityRating, payload.energyRating)
+      notifyWindowsOfStateChange()
+      console.log('[SESSIONS IPC] focus-session:updateReflection successfully executed in DB')
+      return { success: true }
+    } catch (err: any) {
+      console.error('[SESSIONS IPC] Failed to update reflection:', err)
+      throw err
+    }
   })
 
   ipcMain.handle('focus-session:rename', async (_, payload: { sessionId: string; customName: string }) => {

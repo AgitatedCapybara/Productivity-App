@@ -36,6 +36,9 @@ export interface IElectronAPI extends BaseIElectronAPI {
   onSessionEnded: (callback: (summary: any) => void) => () => void;
   getSetting: (key: string, defaultValue: string) => Promise<string>;
   setSetting: (key: string, value: string) => Promise<boolean>;
+  getOverlayDiagnostics: () => Promise<any>;
+  forceShowWidget: () => Promise<{ success: boolean; message: string }>;
+  forceHideWidget: () => Promise<{ success: boolean; message: string }>;
 }
 
 export interface IWidgetAPI {
@@ -43,8 +46,11 @@ export interface IWidgetAPI {
   pauseSession: () => Promise<void>;
   resumeSession: () => Promise<void>;
   stopSession: () => Promise<{ sessionId: string; taskId: string; durationMins: number; distractionCount: number }>;
+  getTasksForToday: () => Promise<any[]>;
+  completeTask: (id: string) => Promise<any>;
   onSessionTick: (callback: (elapsed: { seconds: number; distractionCount: number; targetDurationMins?: number }) => void) => () => void;
   onSessionStopped: (callback: (summary: { durationMins: number; distractionCount: number }) => void) => () => void;
+  onSessionStateChanged: (callback: () => void) => () => void;
 }
 
 declare global {

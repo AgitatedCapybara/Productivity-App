@@ -41,7 +41,7 @@ export function AnalyticsView() {
   const setPreselectedSessionId = useAppStore(state => state.setPreselectedSessionId)
 
   const observerRef = useRef<ResizeObserver | null>(null)
-  const [dimensions, setDimensions] = useState({ width: 500, height: 224 })
+  const [dimensions, setDimensions] = useState({ width: 0, height: 224 })
 
   const containerRef = useCallback((node: HTMLDivElement | null) => {
     if (observerRef.current) {
@@ -113,33 +113,6 @@ export function AnalyticsView() {
 
   const handleCustomScaleChange = (val: string) => {
     setCustomInputVal(val)
-    if (val.trim() === '') {
-      setScaleError('Please enter a number')
-      return
-    }
-    
-    const num = Number(val)
-    if (isNaN(num)) {
-      setScaleError('Error: Invalid input. Scaling factor must be a numeric value.')
-      return
-    }
-    
-    if (!Number.isInteger(num)) {
-      setScaleError('Error: Non-integer value. Chart scaling must be a whole number.')
-      return
-    }
-    
-    if (num < 1) {
-      setScaleError('Error: Scaling too small. Minimum value is 1 day.')
-      return
-    }
-
-    if (num > 1000) {
-      setScaleError('Error: Scaling too large. Maximum value is 1000 days.')
-      return
-    }
-    
-    setScaleError(null)
   }
 
   const handleApplyScale = () => {
@@ -294,8 +267,7 @@ export function AnalyticsView() {
     .slice(0, 5)
 
   const isDirty = customInputVal.trim() !== '' && customInputVal.trim() !== String(timeScaleDays)
-  const parsedCustom = Number(customInputVal.trim())
-  const showChart = customInputVal.trim() !== '' && !isNaN(parsedCustom) && Number.isInteger(parsedCustom) && parsedCustom >= 1 && parsedCustom <= 1000
+  const showChart = typeof timeScaleDays === 'number' && !isNaN(timeScaleDays) && timeScaleDays >= 1 && timeScaleDays <= 1000
 
   // Exact current time bounds for continuous-time XAxis
   const nowTime = Date.now()
@@ -333,6 +305,23 @@ export function AnalyticsView() {
       distractions: s.distractionCount ?? 0
     }
   })
+
+  // Dynamic custom dots animation based on sweep progression
+  const renderCustomDot = (r: number, fill: string) => (props: any) => {
+    const { cx, cy, index } = props
+    if (cx === undefined || cy === undefined || index === undefined) return null
+    
+    return (
+      <circle
+        key={`dot-${index}`}
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill={fill}
+        stroke="none"
+      />
+    )
+  }
 
   // Generate ticks based on the continuous duration
   const getXAxisTicks = (start: number, end: number, days: number): number[] => {
@@ -423,7 +412,7 @@ export function AnalyticsView() {
             Focus Intelligence
           </h1>
           <p className="text-zinc-500 text-xs">
-            Review your productivity and growth.
+            Review your historical cognitive depth, productive timelines, and distraction points.
           </p>
         </div>
 
@@ -610,11 +599,11 @@ export function AnalyticsView() {
                           animate={{ opacity: 1, scale: 1, x: 0 }}
                           exit={{ opacity: 0, scale: 0.8, x: -5 }}
                           onClick={handleApplyScale}
-                          disabled={!!scaleError || customInputVal.trim() === ''}
+                          disabled={customInputVal.trim() === ''}
                           className={cn(
                             "p-1 rounded-lg border text-xs cursor-pointer transition-all flex items-center justify-center h-7 w-7 shrink-0",
-                            (scaleError || customInputVal.trim() === '')
-                              ? "bg-red-500/10 border-red-500/20 text-red-400 cursor-not-allowed opacity-50"
+                            customInputVal.trim() === ''
+                              ? "bg-zinc-800 border-zinc-700 text-zinc-500 cursor-not-allowed opacity-50"
                               : "bg-emerald-500/15 border-emerald-500/25 text-emerald-400 hover:bg-emerald-500/25 active:scale-95"
                           )}
                           title="Apply custom scale (Enter)"
@@ -635,67 +624,79 @@ export function AnalyticsView() {
               )}
 
               {showChart ? (
-                <div ref={containerRef} className="h-56 w-full text-xs">
-                  <AreaChart width={dimensions.width} height={dimensions.height} data={chartData} margin={{ top: 10, right: 5, left: -25, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/>
-                        <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="#27272a" strokeOpacity={0.4} strokeDasharray="3 3" vertical={true} horizontal={true} />
-                    <XAxis 
-                      type="number"
-                      dataKey="timestamp" 
-                      domain={[startTime, endTime]}
-                      ticks={xAxisTicks}
-                      tickFormatter={formatXAxisTick}
-                      stroke="#4b5563" 
-                      fontSize={9} 
-                      tickLine={true} 
-                      axisLine={true} 
-                      dy={8}
-                    />
-                    <YAxis 
-                      stroke="#4b5563" 
-                      fontSize={9} 
-                      tickLine={false} 
-                      axisLine={false}
-                      allowDecimals={false}
-                    />
-                    <Tooltip 
-                      labelFormatter={formatTooltipLabel}
-                      contentStyle={{ 
-                        backgroundColor: '#18181b', 
-                        borderColor: '#27272a',
-                        borderRadius: '12px',
-                        color: 'white',
-                        fontSize: '11px',
-                        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)'
-                      }}
-                      labelStyle={{ fontWeight: 'bold', color: '#a1a1aa', marginBottom: '4px' }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="TotalMins" 
-                      stroke="#27272a" 
-                      strokeWidth={1.5}
-                      fill="transparent" 
-                      strokeDasharray="4 4"
-                      dot={{ r: 2, fill: '#3f3f46', strokeWidth: 0 }}
-                      activeDot={{ r: 4, strokeWidth: 0 }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey="ProductiveMins" 
-                      stroke="#6366f1" 
-                      strokeWidth={2}
-                      fillOpacity={1} 
-                      fill="url(#colorProd)" 
-                      dot={{ r: 3, fill: '#6366f1', strokeWidth: 0 }}
-                      activeDot={{ r: 5, strokeWidth: 0 }}
-                    />
-                  </AreaChart>
+                <div ref={containerRef} className="h-56 w-full text-xs overflow-hidden">
+                  {dimensions.width > 0 && (
+                    <motion.div
+                      key={`${timeScaleDays}-${chartData.length}`}
+                      initial={{ clipPath: 'inset(0 100% 0 0)' }}
+                      animate={{ clipPath: 'inset(0 0% 0 0)' }}
+                      transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
+                      className="h-full w-full"
+                    >
+                      <AreaChart width={dimensions.width} height={dimensions.height} data={chartData} margin={{ top: 10, right: 5, left: -25, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="colorProd" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.2}/>
+                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="#27272a" strokeOpacity={0.4} strokeDasharray="3 3" vertical={true} horizontal={true} />
+                        <XAxis 
+                          type="number"
+                          dataKey="timestamp" 
+                          domain={[startTime, endTime]}
+                          ticks={xAxisTicks}
+                          tickFormatter={formatXAxisTick}
+                          stroke="#4b5563" 
+                          fontSize={9} 
+                          tickLine={true} 
+                          axisLine={true} 
+                          dy={8}
+                        />
+                        <YAxis 
+                          stroke="#4b5563" 
+                          fontSize={9} 
+                          tickLine={false} 
+                          axisLine={false}
+                          allowDecimals={false}
+                        />
+                        <Tooltip 
+                          labelFormatter={formatTooltipLabel}
+                          contentStyle={{ 
+                            backgroundColor: '#18181b', 
+                            borderColor: '#27272a',
+                            borderRadius: '12px',
+                            color: 'white',
+                            fontSize: '11px',
+                            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.3)'
+                          }}
+                          labelStyle={{ fontWeight: 'bold', color: '#a1a1aa', marginBottom: '4px' }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="TotalMins" 
+                          stroke="#27272a" 
+                          strokeWidth={1.5}
+                          fill="transparent" 
+                          strokeDasharray="4 4"
+                          isAnimationActive={false}
+                          dot={renderCustomDot(2, '#3f3f46')}
+                          activeDot={{ r: 4, strokeWidth: 0 }}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="ProductiveMins" 
+                          stroke="#6366f1" 
+                          strokeWidth={2}
+                          fillOpacity={1} 
+                          fill="url(#colorProd)" 
+                          isAnimationActive={false}
+                          dot={renderCustomDot(3, '#6366f1')}
+                          activeDot={{ r: 5, strokeWidth: 0 }}
+                        />
+                      </AreaChart>
+                    </motion.div>
+                  )}
                 </div>
               ) : (
                 <div className="h-56 w-full flex flex-col items-center justify-center p-4 border border-dashed border-zinc-800/80 rounded-xl text-center bg-zinc-950/10">

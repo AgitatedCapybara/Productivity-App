@@ -5,7 +5,7 @@ import { registerWindowHandlers } from './window.ipc'
 import { registerSessionHandlers } from './sessions.ipc'
 import { registerSettingsHandlers } from './settings.ipc'
 
-export function registerAllHandlers() {
+export function registerAllHandlers(): void {
   registerTaskHandlers()
   registerProjectHandlers()
   registerHabitHandlers()
@@ -14,3 +14,4 @@ export function registerAllHandlers() {
 }
 
 export { registerWindowHandlers }
+

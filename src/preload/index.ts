@@ -9,6 +9,7 @@ const api = {
   setZoomRatio: (ratio: number) => webFrame.setZoomFactor(ratio),
   getTasks: () => ipcRenderer.invoke('tasks:getAll'),
   getDeletedTasks: () => ipcRenderer.invoke('tasks:getDeleted'),
+  purgeDeletedTasks: () => ipcRenderer.invoke('tasks:purgeDeleted'),
   getTasksDueToday: () => ipcRenderer.invoke('tasks:getDueToday'),
   getTasksUpcoming: () => ipcRenderer.invoke('tasks:getUpcoming'),
   getTasksForToday: () => ipcRenderer.invoke('tasks:getForToday'),
@@ -93,7 +94,10 @@ const api = {
     return () => ipcRenderer.removeListener('session:ended', handler)
   },
   getSetting: (key: string, defaultValue: string) => ipcRenderer.invoke('settings:get', key, defaultValue),
-  setSetting: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value)
+  setSetting: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value),
+  getOverlayDiagnostics: () => ipcRenderer.invoke('window:getOverlayDiagnostics'),
+  forceShowWidget: () => ipcRenderer.invoke('window:forceShowWidget'),
+  forceHideWidget: () => ipcRenderer.invoke('window:forceHideWidget')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

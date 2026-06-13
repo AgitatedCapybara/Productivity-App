@@ -15,9 +15,10 @@ interface TaskSectionProps {
   tasks: Task[]
   accentColor?: string
   defaultOpen?: boolean
+  headerAction?: React.ReactNode
 }
 
-export function TaskSection({ title, tasks, accentColor, defaultOpen = true }: TaskSectionProps) {
+export function TaskSection({ title, tasks, accentColor, defaultOpen = true, headerAction }: TaskSectionProps) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   if (tasks.length === 0) return null
@@ -28,25 +29,33 @@ export function TaskSection({ title, tasks, accentColor, defaultOpen = true }: T
       onOpenChange={setIsOpen}
       className="w-full relative bg-transparent pb-2"
     >
-      <CollapsibleTrigger className="flex items-center gap-2 w-full py-2 hover:bg-[var(--bg-hover)] rounded-lg transition-colors px-1 group no-drag">
-        <div 
-          className={cn(
-            "w-4 h-4 flex items-center justify-center transition-transform duration-200",
-            isOpen ? "rotate-90" : "rotate-0"
-          )}
-        >
-          <ChevronRight size={14} className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors" />
-        </div>
-        <span 
-          className="text-[11px] font-medium uppercase tracking-[0.05em]" 
-          style={{ color: accentColor || 'var(--text-secondary)' }}
-        >
-          {title}
-        </span>
-        <span className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-1.5 py-0.5 rounded-md min-w-[20px] text-center">
-          {tasks.length}
-        </span>
-      </CollapsibleTrigger>
+      <div className="flex items-center justify-between">
+        <CollapsibleTrigger className="flex items-center gap-2 py-2 hover:bg-[var(--bg-hover)] rounded-lg transition-colors px-1 group no-drag text-left select-none">
+          <div 
+            className={cn(
+              "w-4 h-4 flex items-center justify-center transition-transform duration-200",
+              isOpen ? "rotate-90" : "rotate-0"
+            )}
+          >
+            <ChevronRight size={14} className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors" />
+          </div>
+          <span 
+            className="text-[11px] font-medium uppercase tracking-[0.05em]" 
+            style={{ color: accentColor || 'var(--text-secondary)' }}
+          >
+            {title}
+          </span>
+          <span className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-1.5 py-0.5 rounded-md min-w-[20px] text-center">
+            {tasks.length}
+          </span>
+        </CollapsibleTrigger>
+        
+        {headerAction && (
+          <div className="flex items-center pr-1 h-full">
+            {headerAction}
+          </div>
+        )}
+      </div>
       
       <AnimatePresence initial={false}>
         {isOpen && (

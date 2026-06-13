@@ -2,7 +2,7 @@ import { app, BrowserWindow, Tray, Menu, globalShortcut, nativeImage } from 'ele
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { createMainWindow, setTrayRef } from './windows/main-window'
-import { createWidgetWindow } from './windows/widget-window'
+import { createWidgetWindow, syncWidgetVisibility } from './windows/widget-window'
 import { registerAllHandlers, registerWindowHandlers } from './ipc'
 import { stopMonitoring } from './services/distraction-monitor'
 
@@ -21,6 +21,26 @@ app.whenReady().then(() => {
   mainWindow = createMainWindow()
   registerWindowHandlers(mainWindow)
   widgetWindow = createWidgetWindow()
+
+  // Dynamic overlay triggering on minimize/restore/focus/blur
+  mainWindow.on('minimize', () => {
+    syncWidgetVisibility()
+  })
+  mainWindow.on('restore', () => {
+    syncWidgetVisibility()
+  })
+  mainWindow.on('show', () => {
+    syncWidgetVisibility()
+  })
+  mainWindow.on('hide', () => {
+    syncWidgetVisibility()
+  })
+  mainWindow.on('focus', () => {
+    syncWidgetVisibility()
+  })
+  mainWindow.on('blur', () => {
+    syncWidgetVisibility()
+  })
 
   let trayIcon: Electron.NativeImage
   try {

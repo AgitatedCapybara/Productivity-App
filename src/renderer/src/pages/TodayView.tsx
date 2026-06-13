@@ -8,7 +8,7 @@ import { Trash2, Pencil, Check, X } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 
 export function TodayView() {
-  const { tasks, completedTasks, deletedTasks, isLoading, error } = useTasks()
+  const { tasks, completedTasks, deletedTasks, isLoading, error, purgeDeletedTasks } = useTasks()
   const [todaySessions, setTodaySessions] = useState<any[]>([])
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingSessionName, setEditingSessionName] = useState<string>('')
@@ -19,6 +19,16 @@ export function TodayView() {
   // Safe confirmation states (instead of blocking window.confirm)
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
   const [isConfirmingClear, setIsConfirmingClear] = useState(false)
+  const [isConfirmingPurge, setIsConfirmingPurge] = useState(false)
+
+  const handlePurgeDeleted = async () => {
+    if (!isConfirmingPurge) {
+      setIsConfirmingPurge(true)
+      return
+    }
+    await purgeDeletedTasks()
+    setIsConfirmingPurge(false)
+  }
 
   const handleSessionClick = (sessionId: string) => {
     setPreselectedSessionId(sessionId)
@@ -36,10 +46,17 @@ export function TodayView() {
       setConfirmingDeleteId(id)
       return
     }
+    // Optimistic update
+    setTodaySessions(prev => prev.filter(s => s.id !== id))
+    setConfirmingDeleteId(null)
+    
     if (window.electronAPI && window.electronAPI.deleteSession) {
-      await window.electronAPI.deleteSession(id)
-      setConfirmingDeleteId(null)
-      fetchTodaySessions()
+      try {
+        await window.electronAPI.deleteSession(id)
+      } catch (err) {
+        console.error(err)
+        fetchTodaySessions()
+      }
     }
   }
 
@@ -48,10 +65,17 @@ export function TodayView() {
       setIsConfirmingClear(true)
       return
     }
+    // Optimistic update
+    setTodaySessions([])
+    setIsConfirmingClear(false)
+    
     if (window.electronAPI && window.electronAPI.clearSessionHistory) {
-      await window.electronAPI.clearSessionHistory()
-      setIsConfirmingClear(false)
-      fetchTodaySessions()
+      try {
+        await window.electronAPI.clearSessionHistory()
+      } catch (err) {
+        console.error(err)
+        fetchTodaySessions()
+      }
     }
   }
 
@@ -170,8 +194,26 @@ export function TodayView() {
             <TaskSection 
               title="Deleted" 
               tasks={deletedTasks || []} 
-              accentColor="var(--color-overdue)" 
+              accentColor="var(--text-muted)" 
               defaultOpen={false} 
+              headerAction={
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    handlePurgeDeleted()
+                  }}
+                  onMouseLeave={() => setIsConfirmingPurge(false)}
+                  className={`text-[10px] flex items-center gap-1.5 px-2 py-0.5 rounded border transition-all duration-150 select-none font-semibold ${
+                    isConfirmingPurge 
+                      ? 'bg-[var(--color-overdue)]/10 text-[var(--color-overdue)] border-[var(--color-overdue)]/30 scale-105' 
+                      : 'text-[var(--text-secondary)] hover:text-[var(--color-overdue)] border-transparent hover:bg-[var(--bg-elevated)]'
+                  }`}
+                  title={isConfirmingPurge ? 'Permanently empty trash?' : 'Empty trash'}
+                >
+                  <Trash2 className="w-3 h-3" />
+                  <span>{isConfirmingPurge ? 'Confirm Empty?' : 'Delete All'}</span>
+                </button>
+              }
             />
 
             {todaySessions.length > 0 && (

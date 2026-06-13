@@ -98,6 +98,7 @@ export interface IElectronAPI {
   setZoomRatio: (ratio: number) => void
   getTasks: () => Promise<Task[]>
   getDeletedTasks: () => Promise<Task[]>
+  purgeDeletedTasks: () => Promise<void>
   getTasksDueToday: () => Promise<Task[]>
   getTasksUpcoming: () => Promise<Task[]>
   getTasksForToday: () => Promise<Task[]>
@@ -120,6 +121,7 @@ export interface IElectronAPI {
   maximizeWindow: () => Promise<void>
   toggleFullscreen: () => Promise<void>
   closeWindow: () => Promise<void>
+  restoreMainWindow?: () => Promise<void>
   startSession?: (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }) => Promise<Session>
   pauseSession?: () => Promise<void>
   resumeSession?: () => Promise<void>

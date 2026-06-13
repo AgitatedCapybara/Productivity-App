@@ -36,6 +36,9 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
   const [markCompleted, setMarkCompleted] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Track the loaded session ID to avoid resets on re-render/external updates
+  const [loadedSessionId, setLoadedSessionId] = useState<string | null>(summary?.sessionId || summary?.id || null)
+
   // Name Editing State (allowing renames inside the evaluation dialog/drawer directly)
   const defaultNameVal = summary?.customName || summary?.custom_name || summary?.taskTitle || summary?.task_title || (summary?.taskId ? tasks.find(t => t.id === summary.taskId)?.title : null) || 'Focus Session'
   const [isEditingName, setIsEditingName] = useState(false)
@@ -44,15 +47,19 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
   // Sync state variables if default values/dependencies change in parent context
   useEffect(() => {
     if (summary) {
-      setReflection(summary.reflection || '')
-      setClarityRating(summary.clarityRating || summary.clarity_rating || 8)
-      setEnergyRating(summary.energyRating || summary.energy_rating || 7)
-      
-      const newDefaultName = summary.customName || summary.custom_name || summary.taskTitle || summary.task_title || (summary.taskId ? tasks.find((t: any) => t.id === summary.taskId)?.title : null) || 'Focus Session'
-      setSessionName(newDefaultName)
-      setIsEditingName(false)
+      const currentId = summary.sessionId || summary.id
+      if (currentId !== loadedSessionId) {
+        setLoadedSessionId(currentId)
+        setReflection(summary.reflection || '')
+        setClarityRating(summary.clarityRating || summary.clarity_rating || 8)
+        setEnergyRating(summary.energyRating || summary.energy_rating || 7)
+        
+        const newDefaultName = summary.customName || summary.custom_name || summary.taskTitle || summary.task_title || (summary.taskId ? tasks.find((t: any) => t.id === summary.taskId)?.title : null) || 'Focus Session'
+        setSessionName(newDefaultName)
+        setIsEditingName(false)
+      }
     }
-  }, [summary, tasks])
+  }, [summary, tasks, loadedSessionId])
 
   const handleSaveName = async () => {
     const sessId = summary?.sessionId || summary?.id
@@ -215,7 +222,7 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
       >
         {/* Dynamic dismiss/close button */}
         <button
-          onClick={onClose}
+          onClick={handleSaveAndClose}
           className="absolute top-5 right-5 p-2 hover:bg-zinc-800/80 hover:text-white text-zinc-400 rounded-xl transition-all cursor-pointer z-10 border border-zinc-800/30 bg-zinc-900/50"
           title={isHistorical ? "Close details" : "Dismiss summary"}
         >

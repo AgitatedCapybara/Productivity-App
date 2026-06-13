@@ -35,8 +35,19 @@
   --color-success: #22c55e;
 }
 
-body {
+html, body, #root {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
   margin: 0;
+}
+
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;

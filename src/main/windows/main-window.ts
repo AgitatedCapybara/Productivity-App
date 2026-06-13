@@ -37,6 +37,9 @@ export function createMainWindow(): BrowserWindow {
     }
   })
 
+  // Tag window to robustly identify it in the main process
+  ;(win as any).isMainWindow = true
+
   win.once('ready-to-show', () => {
     win.show()
   })

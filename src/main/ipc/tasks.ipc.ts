@@ -12,7 +12,8 @@ import {
   updateTask,
   deleteTask,
   reorderTasks,
-  completeTask
+  completeTask,
+  purgeAllDeletedTasks
 } from '../db/tasks'
 import { getActiveSession, endSession } from '../db/sessions'
 import { stopMonitoring } from '../services/distraction-monitor'
@@ -21,6 +22,7 @@ import type { CreateTaskInput, UpdateTaskInput } from '../db/schema'
 export function registerTaskHandlers() {
   ipcMain.handle('tasks:getAll', async () => getAllTasks())
   ipcMain.handle('tasks:getDeleted', async () => getDeletedTasks())
+  ipcMain.handle('tasks:purgeDeleted', async () => purgeAllDeletedTasks())
   ipcMain.handle('tasks:getDueToday', async () => getTasksDueToday())
   ipcMain.handle('tasks:getUpcoming', async () => getTasksUpcoming())
   ipcMain.handle('tasks:getForToday', async () => getTasksForToday())

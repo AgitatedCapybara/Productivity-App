@@ -112,16 +112,22 @@ export function MainLayout() {
   if (recentFocusSummary) {
     const targetMins = recentFocusSummary.targetMinutes || recentFocusSummary.target_duration_mins || 25
     return (
-      <PostSessionOverview 
-        summary={recentFocusSummary}
-        targetMinutes={targetMins}
-        onClose={() => setRecentFocusSummary(null)}
-      />
+      <div className="w-screen h-screen flex flex-col overflow-hidden bg-[#09090b]" id="recent-focus-summary-wrapper">
+        <PostSessionOverview 
+          summary={recentFocusSummary}
+          targetMinutes={targetMins}
+          onClose={() => setRecentFocusSummary(null)}
+        />
+      </div>
     )
   }
 
   if (activeSessionId) {
-    return <FocusWorkspaceView />
+    return (
+      <div className="w-screen h-screen flex flex-col overflow-hidden bg-[#09090b]" id="active-session-workspace-wrapper">
+        <FocusWorkspaceView />
+      </div>
+    )
   }
 
   return (

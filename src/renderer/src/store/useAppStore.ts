@@ -5,6 +5,7 @@ import type { Task, Project, View } from '../types'
 export interface AppState {
   tasks: Task[]
   completedTasks: Task[]
+  deletedTasks: Task[]
   projects: Project[]
   activeView: View
   selectedProjectId: string | null
@@ -19,6 +20,7 @@ export interface AppState {
   error: string | null
   setTasks: (tasks: Task[]) => void
   setCompletedTasks: (tasks: Task[]) => void
+  setDeletedTasks: (tasks: Task[]) => void
   addCompletedTask: (task: Task) => void
   addTask: (task: Task) => void
   updateTask: (task: Task) => void
@@ -50,6 +52,7 @@ export interface AppState {
 export const useAppStore = create<AppState>()(immer((set) => ({
   tasks: [],
   completedTasks: [],
+  deletedTasks: [],
   projects: [],
   activeView: 'today',
   selectedProjectId: null,
@@ -73,6 +76,8 @@ export const useAppStore = create<AppState>()(immer((set) => ({
   setTasks: (tasks) => set((state) => { state.tasks = tasks }),
   
   setCompletedTasks: (tasks) => set((state) => { state.completedTasks = tasks }),
+
+  setDeletedTasks: (tasks) => set((state) => { state.deletedTasks = tasks }),
   
   addCompletedTask: (task) => set((state) => { state.completedTasks.unshift(task) }),
   

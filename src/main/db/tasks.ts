@@ -174,3 +174,9 @@ export function completeTask(id: string): Task {
   const getStmt = db.prepare('SELECT * FROM tasks WHERE id = ?')
   return getStmt.get(id) as Task
 }
+
+export function purgeAllDeletedTasks(): void {
+  const db = getDb()
+  const stmt = db.prepare("DELETE FROM tasks WHERE status = 'deleted'")
+  stmt.run()
+}

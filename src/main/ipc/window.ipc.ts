@@ -1,23 +1,131 @@
 import { ipcMain, BrowserWindow } from 'electron'
+import { getActiveSession } from '../db/sessions'
+import { getSyncLogs, syncWidgetVisibility, setForceShowOverride } from '../windows/widget-window'
 
 export function registerWindowHandlers(mainWindow: BrowserWindow) {
-  ipcMain.handle('window:minimize', () => {
-    mainWindow.minimize()
-  })
-
-  ipcMain.handle('window:maximize', () => {
-    if (mainWindow.isMaximized()) {
-      mainWindow.unmaximize()
+  ipcMain.handle('window:minimize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      win.minimize()
     } else {
-      mainWindow.maximize()
+      mainWindow.minimize()
     }
   })
 
-  ipcMain.handle('window:toggleFullscreen', () => {
-    mainWindow.setFullScreen(!mainWindow.isFullScreen())
+  ipcMain.handle('window:maximize', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const targetWin = win || mainWindow
+    if (targetWin.isMaximized()) {
+      targetWin.unmaximize()
+    } else {
+      targetWin.maximize()
+    }
   })
 
-  ipcMain.handle('window:close', () => {
-    mainWindow.close()
+  ipcMain.handle('window:restore', () => {
+    setForceShowOverride(false)
+    if (mainWindow.isMinimized()) {
+      mainWindow.restore()
+    }
+    mainWindow.show()
+    mainWindow.focus()
+  })
+
+  ipcMain.handle('window:toggleFullscreen', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    const targetWin = win || mainWindow
+    targetWin.setFullScreen(!targetWin.isFullScreen())
+  })
+
+  ipcMain.handle('window:close', (event) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win && win !== mainWindow) {
+      win.hide() // If widget window seeks to close, just hide it
+    } else {
+      mainWindow.close()
+    }
+  })
+
+  ipcMain.handle('window:getOverlayDiagnostics', () => {
+    try {
+      // Force evaluate visibility states before retrieving metrics
+      syncWidgetVisibility()
+
+      const activeSession = getActiveSession()
+      const windows = BrowserWindow.getAllWindows()
+      
+      let mainWin: BrowserWindow | null = null
+      let widgetWin: BrowserWindow | null = null
+      
+      for (const win of windows) {
+        if (win.isDestroyed()) continue
+        if ((win as any).isCompanionWidget) {
+          widgetWin = win
+        } else if ((win as any).isMainWindow) {
+          mainWin = win
+        }
+      }
+      
+      return {
+        sessionActive: !!activeSession,
+        sessionStatus: activeSession ? activeSession.status : null,
+        mainWindowFound: !!mainWin,
+        mainWindowMinimized: mainWin ? mainWin.isMinimized() : null,
+        mainWindowVisible: mainWin ? mainWin.isVisible() : null,
+        mainWindowFocused: mainWin ? mainWin.isFocused() : null,
+        widgetWindowCreated: !!widgetWin,
+        widgetWindowVisible: widgetWin ? widgetWin.isVisible() : null,
+        windowsCount: windows.length,
+        syncLogs: getSyncLogs(),
+        windowsList: windows.map(w => ({
+          title: w.getTitle(),
+          isDestroyed: w.isDestroyed(),
+          isVisible: w.isVisible(),
+          isMinimized: w.isMinimized(),
+          isFocused: w.isFocused(),
+          isMainWindow: !!(w as any).isMainWindow,
+          isCompanionWidget: !!(w as any).isCompanionWidget
+        }))
+      }
+    } catch (err: any) {
+      return { error: err.message || String(err), syncLogs: getSyncLogs() }
+    }
+  })
+
+  ipcMain.handle('window:forceShowWidget', () => {
+    const windows = BrowserWindow.getAllWindows()
+    let widgetWin: BrowserWindow | null = null
+    for (const win of windows) {
+      if (win.isDestroyed()) continue
+      if ((win as any).isCompanionWidget) {
+        widgetWin = win
+        break
+      }
+    }
+    if (widgetWin) {
+      setForceShowOverride(true)
+      widgetWin.showInactive()
+      widgetWin.setAlwaysOnTop(true, 'screen-saver')
+      return { success: true, message: 'Widget shown via force command. Auto-hide sync overridden.' }
+    }
+    return { success: false, message: 'Widget window was not found or has been destroyed.' }
+  })
+
+  ipcMain.handle('window:forceHideWidget', () => {
+    const windows = BrowserWindow.getAllWindows()
+    let widgetWin: BrowserWindow | null = null
+    for (const win of windows) {
+      if (win.isDestroyed()) continue
+      if ((win as any).isCompanionWidget) {
+        widgetWin = win
+        break
+      }
+    }
+    if (widgetWin) {
+      setForceShowOverride(false)
+      widgetWin.hide()
+      return { success: true, message: 'Widget hidden and override mode disabled.' }
+    }
+    return { success: false, message: 'Widget window was not found.' }
   })
 }

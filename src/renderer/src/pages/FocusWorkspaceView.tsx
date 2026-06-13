@@ -6,7 +6,7 @@ import {
   Pause, 
   Square, 
   AlertTriangle, 
-  Compass 
+  Compass
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/utils'
@@ -25,26 +25,49 @@ export function FocusWorkspaceView() {
   const [isPaused, setIsPaused] = useState(false)
   const [targetMinutes, setTargetMinutes] = useState(25)
   const [distractions, setDistractions] = useState<any[]>([])
-  const [debugChecksCount, setDebugChecksCount] = useState(0)
-  const [isSimulated, setIsSimulated] = useState(false)
-  const [simulateActivity, setSimulateActivity] = useState(false)
 
   // Completion summary state
   const [summary, setSummary] = useState<any | null>(null)
 
-  // Load simulate-activity preference
+  // Safety confirmation
+  const [isConfirmingStop, setIsConfirmingStop] = useState(false)
+
+  // Companion Widget diagnostics
+  const [diagnostics, setDiagnostics] = useState<any>(null)
+  const [diagnosticError, setDiagnosticError] = useState<string | null>(null)
+  const [showDiagnostics, setShowDiagnostics] = useState(false)
+
+  // Poll diagnostics in real-time
   useEffect(() => {
-    if (!window.electronAPI || !window.electronAPI.getSetting) return
-    window.electronAPI.getSetting('simulate-activity', 'false').then((val) => {
-      setSimulateActivity(val === 'true')
-    })
+    if (!window.electronAPI || !window.electronAPI.getOverlayDiagnostics) return
+
+    const loadDiagnostics = async () => {
+      try {
+        const diag = await window.electronAPI.getOverlayDiagnostics()
+        setDiagnostics(diag)
+        setDiagnosticError(null)
+      } catch (err: any) {
+        setDiagnosticError(err.message || String(err))
+      }
+    }
+
+    loadDiagnostics()
+    const id = setInterval(loadDiagnostics, 2000)
+    return () => clearInterval(id)
   }, [])
 
-  const handleToggleSimulateActivity = async () => {
-    if (!window.electronAPI || !window.electronAPI.setSetting) return
-    const nextVal = !simulateActivity
-    setSimulateActivity(nextVal)
-    await window.electronAPI.setSetting('simulate-activity', nextVal ? 'true' : 'false')
+  const handleForceShow = async () => {
+    if (window.electronAPI && window.electronAPI.forceShowWidget) {
+      const res = await window.electronAPI.forceShowWidget()
+      setDiagnosticError(`Status: ${res.success ? 'Success' : 'Failed'} - ${res.message}`)
+    }
+  }
+
+  const handleForceHide = async () => {
+    if (window.electronAPI && window.electronAPI.forceHideWidget) {
+      const res = await window.electronAPI.forceHideWidget()
+      setDiagnosticError(`Status: ${res.success ? 'Success' : 'Failed'} - ${res.message}`)
+    }
   }
 
   const loadActiveSession = async (retryCount = 0) => {
@@ -108,17 +131,9 @@ export function FocusWorkspaceView() {
       }
     })
 
-    const removeDebugCheckListener = window.electronAPI.onSessionDebugCheckTick
-      ? window.electronAPI.onSessionDebugCheckTick((count, sim) => {
-          setDebugChecksCount(count)
-          setIsSimulated(sim)
-        })
-      : null
-
     return () => {
       if (typeof removeStateListener === 'function') removeStateListener()
       if (typeof removeDistractionListener === 'function') removeDistractionListener()
-      if (typeof removeDebugCheckListener === 'function') removeDebugCheckListener()
     }
   }, [activeSessionId])
 
@@ -172,11 +187,16 @@ export function FocusWorkspaceView() {
 
   const handleStop = async () => {
     if (!window.electronAPI || !session) return
+    if (!isConfirmingStop) {
+      setIsConfirmingStop(true)
+      return
+    }
     try {
       const summaryResult = await window.electronAPI.stopSession()
       setSummary(summaryResult)
       setActiveSession(null)
       setActiveTaskId(null)
+      setIsConfirmingStop(false)
     } catch (err) {
       console.error('Failed to stop session:', err)
     }
@@ -351,10 +371,16 @@ export function FocusWorkspaceView() {
           {/* STOP Button (Terminates work block) */}
           <button
             onClick={handleStop}
-            className="px-6 h-12 bg-rose-500/10 border border-rose-500/20 hover:bg-rose-500 hover:text-white hover:border-transparent text-rose-400 rounded-2xl flex items-center gap-2 text-xs font-semibold tracking-wide uppercase transition-all shadow-md active:scale-95 cursor-pointer"
+            onMouseLeave={() => setIsConfirmingStop(false)}
+            className={cn(
+              "px-6 h-12 rounded-2xl flex items-center gap-2 text-xs font-semibold tracking-wide uppercase transition-all shadow-md active:scale-95 cursor-pointer border",
+              isConfirmingStop
+                ? "bg-rose-605 text-white border-transparent hover:bg-rose-700 animate-pulse font-bold"
+                : "bg-rose-500/10 border-rose-500/20 hover:bg-rose-500 hover:text-white hover:border-transparent text-rose-400"
+            )}
           >
             <Square size={13} fill="currentColor" />
-            End Focus Session
+            {isConfirmingStop ? 'Are you sure? Click again' : 'End Focus Session'}
           </button>
         </div>
 
@@ -389,54 +415,7 @@ export function FocusWorkspaceView() {
             </span>
           </div>
 
-          {/* Debug window check counter */}
-          <div className="space-y-2 mb-3">
-            <div className="flex items-center justify-between bg-zinc-950/40 p-2 text-[10.5px] rounded-lg border border-zinc-900/50">
-              <span className="text-zinc-500 font-mono flex items-center gap-1.5">
-                <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
-                [Debug] Window Polling Checks:
-              </span>
-              <span className="font-mono text-indigo-400 font-bold bg-indigo-500/5 px-2 py-0.5 rounded border border-indigo-500/10">
-                {debugChecksCount} check{debugChecksCount === 1 ? '' : 's'} {isSimulated ? '(Simulated)' : '(Native)'}
-              </span>
-            </div>
 
-            {isSimulated && (
-              <div className="bg-amber-500/[0.02] border border-amber-550/15 rounded-xl p-3 space-y-2 text-left">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-400">
-                    <span className="inline-block w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                    Web Preview Sandbox Simulation
-                  </div>
-                  <button
-                    onClick={handleToggleSimulateActivity}
-                    className={cn(
-                      "text-[9.5px] font-mono px-2 py-0.5 rounded border transition-colors cursor-pointer",
-                      simulateActivity
-                        ? "bg-amber-500/10 text-amber-400 border-amber-500/20 hover:bg-amber-500/20"
-                        : "bg-zinc-900 text-zinc-400 border-zinc-800 hover:bg-zinc-850"
-                    )}
-                  >
-                    {simulateActivity ? 'SIMULATOR ACTIVE' : 'SIMULATOR PAUSED'}
-                  </button>
-                </div>
-                <p className="text-[10.5px] text-zinc-400 leading-normal font-sans">
-                  {simulateActivity ? (
-                    <span>
-                      Because this app is running in a headless browser container inside the <strong>AI Studio Cloud Preview</strong>, OS APIs cannot capture your physical screen. Instead, we are simulates focus swaps (like VS Code, Brave, Slack, Spotify) to showcase distraction logs.
-                    </span>
-                  ) : (
-                    <span>
-                      Simulated focus shifts have been <strong>paused</strong>. Ticks will now remain 100% productive, logging 0 distraction switches. Feel free to use this to test and experience a focused workspace cycle!
-                    </span>
-                  )}
-                </p>
-                <div className="text-[9.5px] text-zinc-500 italic font-sans leading-relaxed pt-0.5 border-t border-zinc-900/50">
-                  *When built and run locally in VS Code or compiled for your actual Windows/macOS desktop, this app will track your physical Brave, Slate, and terminal foreground frames natively!
-                </div>
-              </div>
-            )}
-          </div>
 
           {/* Live distractions monitored list */}
           {distractions.length > 0 ? (
@@ -460,6 +439,160 @@ export function FocusWorkspaceView() {
             <div className="py-8 text-center text-zinc-550 text-xs italic">
               ✨ Window monitoring active. No distraction switches recorded yet.
             </div>
+          )}
+        </div>
+
+        {/* Overlay OS Diagnostician & Debugging Console */}
+        <div className="max-w-[560px] w-full bg-zinc-950/40 border border-zinc-800/40 rounded-2xl p-4 backdrop-blur-md space-y-3">
+          <div className="flex items-center justify-between border-b border-zinc-900 pb-2">
+            <h4 className="text-xs font-semibold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              Overlay OS Diagnostician
+            </h4>
+            <button
+              onClick={() => setShowDiagnostics(!showDiagnostics)}
+              className="text-[10px] font-mono text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+            >
+              {showDiagnostics ? "Hide Details" : "Inspect System Details"}
+            </button>
+          </div>
+
+          {showDiagnostics ? (
+            <div className="space-y-3.5 text-left transition-all">
+              {window.electronAPI ? (
+                <div className="space-y-2 text-[10px] text-zinc-400 font-mono">
+                  {diagnostics ? (
+                    <>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 bg-zinc-900/30 p-2.5 rounded-xl border border-zinc-900">
+                        <div className="flex justify-between border-b border-zinc-900/40 pb-1">
+                          <span className="text-zinc-500">Active Session SQlite:</span> 
+                          <span className={diagnostics.sessionActive ? "text-emerald-400 font-bold" : "text-amber-500"}>
+                            {diagnostics.sessionActive ? `YES (${diagnostics.sessionStatus})` : "NO"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-900/40 pb-1">
+                          <span className="text-zinc-500">Main Win Registered:</span> 
+                          <span className={diagnostics.mainWindowFound ? "text-emerald-400" : "text-rose-500 font-bold"}>
+                            {diagnostics.mainWindowFound ? "YES" : "NO"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-900/40 pb-1">
+                          <span className="text-zinc-500">Main Win Minimized:</span> 
+                          <span className={diagnostics.mainWindowMinimized ? "text-amber-400 font-bold" : "text-zinc-500"}>
+                            {diagnostics.mainWindowMinimized ? "TRUE (Minimized)" : "FALSE"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-900/40 pb-1">
+                          <span className="text-zinc-550">Main Win isVisible:</span> 
+                          <span className={diagnostics.mainWindowVisible ? "text-emerald-400" : "text-amber-500 font-bold"}>
+                            {diagnostics.mainWindowVisible ? "TRUE" : "FALSE"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between border-b border-zinc-900/40 pb-1">
+                          <span className="text-zinc-550">Main Win isFocused:</span> 
+                          <span className={diagnostics.mainWindowFocused ? "text-emerald-400 font-bold" : "text-zinc-500"}>
+                            {diagnostics.mainWindowFocused ? "TRUE" : "FALSE"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between pb-1">
+                          <span className="text-zinc-550">Widget Instantiated:</span> 
+                          <span className={diagnostics.widgetWindowCreated ? "text-emerald-400 font-bold" : "text-amber-500"}>
+                            {diagnostics.widgetWindowCreated ? "YES" : "NO"}
+                          </span>
+                        </div>
+                        <div className="flex justify-between pb-1">
+                          <span className="text-zinc-550">Widget isVisible:</span> 
+                          <span className={diagnostics.widgetWindowVisible ? "text-emerald-400 font-bold" : "text-zinc-500"}>
+                            {diagnostics.widgetWindowVisible ? "TRUE" : "FALSE"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Display Step-by-Step execution sync history */}
+                      <div className="border border-zinc-950 bg-zinc-950/60 rounded-xl p-3 mt-1.5">
+                        <div className="text-zinc-500 text-[9px] uppercase tracking-wider font-semibold mb-2 flex items-center gap-1.5">
+                          <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                          Window Sync Evaluation History (Polled):
+                        </div>
+                        <div className="space-y-1 max-h-36 overflow-y-auto custom-scrollbar select-text pr-1">
+                          {diagnostics.syncLogs && diagnostics.syncLogs.length > 0 ? (
+                            diagnostics.syncLogs.map((log: string, idx: number) => (
+                              <div key={idx} className="text-[9px] text-zinc-400 font-mono break-all leading-tight border-b border-zinc-900/30 pb-1 last:border-b-0">
+                                {log}
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-zinc-600 text-[9px] italic">No sync evaluations registered yet. Click "Evaluate State" below!</div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="border border-zinc-950 bg-zinc-950/60 rounded-xl p-3 mt-1.5">
+                        <div className="text-zinc-500 text-[9px] uppercase tracking-wider font-bold mb-1 font-sans">Active OS Windows List:</div>
+                        <div className="space-y-1">
+                          {diagnostics.windowsList && diagnostics.windowsList.length > 0 ? (
+                            diagnostics.windowsList.map((w: any, idx: number) => (
+                              <div key={idx} className="text-[9px] text-zinc-500 leading-normal border-b border-zinc-900/30 pb-0.5 last:border-b-0">
+                                • "{w.title || 'Frameless Window'}" <span className="text-zinc-400">(isMin: {w.isMinimized ? 'yes' : 'no'}, isVis: {w.isVisible ? 'yes' : 'no'}, isFoc: {w.isFocused ? 'yes' : 'no'}, isMain: {w.isMainWindow ? 'yes' : 'no'}, isWidget: {w.isCompanionWidget ? 'yes' : 'no'})</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-[9px] text-zinc-600 italic">Zero windows returned by Electron</div>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <span className="text-zinc-500 italic block">Evaluating active process threads...</span>
+                  )}
+                  
+                  {diagnosticError && (
+                    <div className="text-rose-400 text-[9.5px] bg-rose-500/5 p-1 rounded border border-rose-500/10 font-sans mt-2">
+                      {diagnosticError}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-[10px] text-amber-400 bg-amber-500/5 p-2 rounded-lg border border-amber-500/10 leading-relaxed font-sans">
+                  ⚡ Native Electron API not found. Please compile/run the application locally on Windows/macOS.
+                </div>
+              )}
+
+              {/* Action Controls for Debugging */}
+              <div className="flex flex-wrap gap-2 pt-1 border-t border-zinc-900/50">
+                {window.electronAPI && (
+                  <>
+                    <button
+                      onClick={handleForceShow}
+                      className="px-2.5 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-500/40 text-[9.5px] font-semibold rounded-lg text-indigo-300 transition-all cursor-pointer"
+                    >
+                      Force Show Widget
+                    </button>
+                    <button
+                      onClick={handleForceHide}
+                      className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[9.5px] font-semibold rounded-lg text-zinc-400 hover:text-zinc-200 transition-all cursor-pointer"
+                    >
+                      Force Hide Widget
+                    </button>
+                    <button
+                      onClick={async () => {
+                        if (window.electronAPI && window.electronAPI.getOverlayDiagnostics) {
+                          const diag = await window.electronAPI.getOverlayDiagnostics()
+                          setDiagnostics(diag)
+                        }
+                      }}
+                      className="px-2.5 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-[9.5px] font-semibold rounded-lg text-emerald-300 transition-all cursor-pointer ml-auto"
+                    >
+                      Evaluate State
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-[10.5px] text-zinc-500 text-left">
+              If the minimized overlay doesn't appear automatically on your desktop, toggle this inspect panel to trace active threads, window names, SQLite sessions, and execute force-trigger controls.
+            </p>
           )}
         </div>
 

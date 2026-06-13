@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { motion } from 'motion/react'
-import { GripVertical, Check, MoreHorizontal, Play, Square, Trash2 } from 'lucide-react'
+import { GripVertical, Check, MoreHorizontal, Play, Square, Trash2, X } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Task } from '../../types'
@@ -39,6 +39,8 @@ export const TaskItem = React.memo(function TaskItem({
 }: TaskItemProps) {
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState(task.title)
+  const [isConfirmingStop, setIsConfirmingStop] = useState(false)
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const projects = useAppStore(state => state.projects)
   const activeTaskId = useAppStore(state => state.activeTaskId)
   const { startSession, stopSession } = useTasks()
@@ -100,7 +102,12 @@ export const TaskItem = React.memo(function TaskItem({
 
   const handleStopClick = (e: React.MouseEvent) => {
     e.stopPropagation()
+    if (!isConfirmingStop) {
+      setIsConfirmingStop(true)
+      return
+    }
     stopSession()
+    setIsConfirmingStop(false)
   }
 
   const inner = (
@@ -123,7 +130,7 @@ export const TaskItem = React.memo(function TaskItem({
       </div>
 
       {task.status === 'deleted' ? (
-        <div className="w-4 h-4 flex flex-shrink-0 items-center justify-center ml-1 mr-3 text-[var(--color-overdue)] opacity-80" title="This task is in the recycle bin">
+        <div className="w-4 h-4 flex flex-shrink-0 items-center justify-center ml-1 mr-3 text-[var(--text-muted)] opacity-80" title="This task is in the recycle bin">
           <Trash2 size={12} />
         </div>
       ) : (
@@ -163,7 +170,7 @@ export const TaskItem = React.memo(function TaskItem({
               className={cn(
                 "text-[13px] font-normal truncate",
                 task.status === 'done' ? "line-through opacity-50 text-[var(--text-secondary)]" : 
-                task.status === 'deleted' ? "line-through opacity-40 text-[var(--text-muted)] italic" : "text-[var(--text-primary)]"
+                task.status === 'deleted' ? "line-through opacity-60 text-[var(--text-secondary)] italic font-light" : "text-[var(--text-primary)]"
               )}
             >
               {task.title}
@@ -239,16 +246,26 @@ export const TaskItem = React.memo(function TaskItem({
       {activeTaskId === task.id ? (
         <button 
           onClick={handleStopClick}
-          className="relative w-6 h-6 mr-1 flex-shrink-0 flex items-center justify-center rounded-md hover:bg-[var(--bg-elevated)] text-[var(--color-success)] hover:text-[var(--color-overdue)] transition-all group/stop"
-          title="Stop active session"
+          onMouseLeave={() => setIsConfirmingStop(false)}
+          className={cn(
+            "relative w-6 h-6 mr-1 flex-shrink-0 flex items-center justify-center rounded-md hover:bg-[var(--bg-elevated)] transition-all group/stop",
+            isConfirmingStop ? "text-[var(--color-overdue)]" : "text-[var(--color-success)]"
+          )}
+          title={isConfirmingStop ? "Click again to confirm stop" : "Stop active session"}
         >
-          {/* Pulsing green dot by default */}
-          <span className="absolute flex h-2 w-2 group-hover:hidden group-hover/stop:hidden transition-all duration-150">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-success)] opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-success)]"></span>
-          </span>
-          {/* Stop Square icon shown on hover */}
-          <Square size={10} className="hidden group-hover:block group-hover/stop:block fill-current" />
+          {isConfirmingStop ? (
+            <X size={12} className="stroke-[3]" />
+          ) : (
+            <>
+              {/* Pulsing green dot by default */}
+              <span className="absolute flex h-2 w-2 group-hover:hidden group-hover/stop:hidden transition-all duration-150">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--color-success)] opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-[var(--color-success)]"></span>
+              </span>
+              {/* Stop Square icon shown on hover */}
+              <Square size={10} className="hidden group-hover:block group-hover/stop:block fill-current" />
+            </>
+          )}
         </button>
       ) : task.status !== 'deleted' && (
         <button 
@@ -259,20 +276,31 @@ export const TaskItem = React.memo(function TaskItem({
         </button>
       )}
 
-      <DropdownMenu>
+      <DropdownMenu onOpenChange={(open) => { if (!open) setIsConfirmingDelete(false) }}>
         <DropdownMenuTrigger asChild>
           <button className="w-6 h-6 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all ml-auto">
             <MoreHorizontal size={14} />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-40 z-50">
+        <DropdownMenuContent align="end" className="w-[170px] z-50">
           {task.status === 'deleted' ? (
             <>
               <DropdownMenuItem onClick={() => onUpdate?.({ id: task.id, status: 'todo' })} className="text-[var(--color-success)] focus:text-[var(--color-success)]">
                 Restore Task
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onDelete?.(task.id)} className="text-[var(--color-overdue)] focus:text-[var(--color-overdue)]">
-                Delete Permanently
+              <DropdownMenuItem 
+                onSelect={(e) => {
+                  e.preventDefault()
+                  if (!isConfirmingDelete) {
+                    setIsConfirmingDelete(true)
+                  } else {
+                    onDelete?.(task.id)
+                    setIsConfirmingDelete(false)
+                  }
+                }} 
+                className="text-[var(--color-overdue)] focus:text-[var(--color-overdue)] font-semibold"
+              >
+                {isConfirmingDelete ? 'Confirm Permanent Delete?' : 'Delete Permanently'}
               </DropdownMenuItem>
             </>
           ) : (
