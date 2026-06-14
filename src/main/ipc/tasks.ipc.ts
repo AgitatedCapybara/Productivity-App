@@ -19,20 +19,45 @@ import { getActiveSession, endSession } from '../db/sessions'
 import { stopMonitoring } from '../services/distraction-monitor'
 import type { CreateTaskInput, UpdateTaskInput } from '../db/schema'
 
+function broadcastTasksChanged(senderWebContents?: Electron.WebContents) {
+  try {
+    const windows = BrowserWindow.getAllWindows()
+    for (const win of windows) {
+      if (!win.isDestroyed() && win.webContents !== senderWebContents) {
+        win.webContents.send('tasks:state-changed')
+      }
+    }
+  } catch (err) {
+    console.error('Failed to broadcast tasks change:', err)
+  }
+}
+
 export function registerTaskHandlers() {
   ipcMain.handle('tasks:getAll', async () => getAllTasks())
   ipcMain.handle('tasks:getDeleted', async () => getDeletedTasks())
-  ipcMain.handle('tasks:purgeDeleted', async () => purgeAllDeletedTasks())
+  ipcMain.handle('tasks:purgeDeleted', async (event) => {
+    const result = purgeAllDeletedTasks()
+    broadcastTasksChanged(event.sender)
+    return result
+  })
   ipcMain.handle('tasks:getDueToday', async () => getTasksDueToday())
   ipcMain.handle('tasks:getUpcoming', async () => getTasksUpcoming())
   ipcMain.handle('tasks:getForToday', async () => getTasksForToday())
   ipcMain.handle('tasks:getTodayCompleted', async () => getTodayCompletedTasks())
   ipcMain.handle('tasks:getByProject', async (_, projectId: string) => getTasksByProject(projectId))
   
-  ipcMain.handle('tasks:create', async (_, input: CreateTaskInput) => createTask(input))
-  ipcMain.handle('tasks:update', async (_, input: UpdateTaskInput) => updateTask(input))
+  ipcMain.handle('tasks:create', async (event, input: CreateTaskInput) => {
+    const result = createTask(input)
+    broadcastTasksChanged(event.sender)
+    return result
+  })
+  ipcMain.handle('tasks:update', async (event, input: UpdateTaskInput) => {
+    const result = updateTask(input)
+    broadcastTasksChanged(event.sender)
+    return result
+  })
   
-  ipcMain.handle('tasks:delete', async (_, id: string) => {
+  ipcMain.handle('tasks:delete', async (event, id: string) => {
     // 1. Prevent running session continuing forever: check if there's an active session matching the task
     try {
       const active = getActiveSession()
@@ -53,9 +78,19 @@ export function registerTaskHandlers() {
     }
 
     // 2. Perform task deletion
-    return deleteTask(id)
+    const result = deleteTask(id)
+    broadcastTasksChanged(event.sender)
+    return result
   })
   
-  ipcMain.handle('tasks:reorder', async (_, ids: string[]) => reorderTasks(ids))
-  ipcMain.handle('tasks:complete', async (_, id: string) => completeTask(id))
+  ipcMain.handle('tasks:reorder', async (event, ids: string[]) => {
+    const result = reorderTasks(ids)
+    broadcastTasksChanged(event.sender)
+    return result
+  })
+  ipcMain.handle('tasks:complete', async (event, id: string) => {
+    const result = completeTask(id)
+    broadcastTasksChanged(event.sender)
+    return result
+  })
 }

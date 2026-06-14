@@ -149,14 +149,21 @@ export function AnalyticsView() {
 
   const handleDeleteSession = async (sessionId: string) => {
     if (!window.electronAPI || !window.electronAPI.deleteSession) return
+    const prevHistory = [...history]
+    
+    // Optimistic update
+    setHistory(prev => prev.filter(s => (s.sessionId || s.id) !== sessionId))
+    if (selectedSession && (selectedSession.id === sessionId || selectedSession.sessionId === sessionId)) {
+      setSelectedSession(null)
+    }
+
     try {
       await window.electronAPI.deleteSession(sessionId)
-      if (selectedSession && (selectedSession.id === sessionId || selectedSession.sessionId === sessionId)) {
-        setSelectedSession(null)
-      }
       loadHistory()
     } catch (err) {
       console.error('Failed to delete session:', err)
+      // Rollback on error
+      setHistory(prevHistory)
     }
   }
 
@@ -412,7 +419,7 @@ export function AnalyticsView() {
             Focus Intelligence
           </h1>
           <p className="text-zinc-500 text-xs">
-            Review your historical cognitive depth, productive timelines, and distraction points.
+            Review your stats and growth!
           </p>
         </div>
 

@@ -4,7 +4,7 @@ import { QuickAdd } from '../components/tasks/QuickAdd'
 import { TaskSection } from '../components/tasks/TaskSection'
 
 export function ProjectView() {
-  const { tasks, isLoading, error } = useTasks()
+  const { tasks, isLoading, error } = useTasks(true)
   const selectedProjectId = useAppStore(state => state.selectedProjectId)
   const projects = useAppStore(state => state.projects)
   const project = projects.find(p => p.id === selectedProjectId)

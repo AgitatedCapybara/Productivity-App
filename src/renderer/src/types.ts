@@ -5,6 +5,7 @@ export type TaskPriority = 0 | 1 | 2 | 3
 
 export interface Task {
   id: string
+  client_id?: string
   title: string
   notes: string
   project_id: string | null
@@ -139,6 +140,7 @@ export interface IElectronAPI {
   onSessionDistractionUpdate: (callback: (count: number) => void) => () => void
   onSessionDebugCheckTick?: (callback: (count: number, isSimulated: boolean) => void) => () => void
   onSessionStateChanged: (callback: () => void) => () => void
+  onTasksStateChanged?: (callback: () => void) => () => void
   onSessionEnded?: (callback: (summary: any) => void) => () => void
   getSetting?: (key: string, defaultValue: string) => Promise<string>
   setSetting?: (key: string, value: string) => Promise<boolean>

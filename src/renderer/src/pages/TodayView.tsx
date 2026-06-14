@@ -8,7 +8,7 @@ import { Trash2, Pencil, Check, X } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 
 export function TodayView() {
-  const { tasks, completedTasks, deletedTasks, isLoading, error, purgeDeletedTasks } = useTasks()
+  const { tasks, completedTasks, deletedTasks, isLoading, error, purgeDeletedTasks } = useTasks(true)
   const [todaySessions, setTodaySessions] = useState<any[]>([])
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null)
   const [editingSessionName, setEditingSessionName] = useState<string>('')

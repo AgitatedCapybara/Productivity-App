@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import * as chrono from 'chrono-node'
 import { useAppStore } from '../store/useAppStore'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
@@ -90,7 +90,7 @@ export function parseTaskInput(raw: string, keepDateText = false) {
   return { title, due_date, due_time, priority, projectTag }
 }
 
-export function useTasks() {
+export function useTasks(enableLoading = false) {
   const { 
     tasks, 
     completedTasks, 
@@ -114,7 +114,7 @@ export function useTasks() {
   const activeView = useAppStore(state => state.activeView)
   const selectedProjectId = useAppStore(state => state.selectedProjectId)
 
-  const loadTasks = async (silent = false) => {
+  const loadTasks = useCallback(async (silent = false): Promise<void> => {
     if (!silent) setLoading(true)
     setError(null)
     if (!window.electronAPI) {
@@ -130,6 +130,9 @@ export function useTasks() {
       } else {
         setDeletedTasks([])
       }
+
+      const activeView = useAppStore.getState().activeView
+      const selectedProjectId = useAppStore.getState().selectedProjectId
 
       if (activeView === 'today') {
         const [tasksResult, completedResult] = await Promise.allSettled([
@@ -158,7 +161,7 @@ export function useTasks() {
     } finally {
       if (!silent) setLoading(false)
     }
-  }
+  }, [setDeletedTasks, setTasks, setCompletedTasks, setError, setLoading])
 
   const loadTasksRef = useRef(loadTasks)
   useEffect(() => {
@@ -166,32 +169,52 @@ export function useTasks() {
   })
 
   useEffect(() => {
+    if (!enableLoading) return
     // Standard load for view/project changes
-    loadTasks(false)
-  }, [activeView, selectedProjectId])
+    loadTasksRef.current(false)
+  }, [activeView, selectedProjectId, enableLoading])
 
   const prevRevision = useRef(tasksRevision)
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null)
   useEffect(() => {
+    if (!enableLoading) return
     // Silent load for background operations/mutations to prevent flickering
     if (tasksRevision !== prevRevision.current) {
       prevRevision.current = tasksRevision
-      loadTasks(true)
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current)
+      }
+      debounceTimer.current = setTimeout(() => {
+        loadTasksRef.current(true)
+      }, 150)
     }
-  }, [tasksRevision])
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current)
+      }
+    }
+  }, [tasksRevision, enableLoading])
 
-  const createTask = async (title: string, extra?: Partial<CreateTaskInput> & { isManuallyOverridden?: boolean }) => {
+  const createTask = useCallback(async (title: string, extra?: Partial<CreateTaskInput> & { isManuallyOverridden?: boolean }): Promise<void> => {
     try {
       const isManuallyOverridden = extra?.isManuallyOverridden || false
       const { isManuallyOverridden: _, ...cleanExtra } = extra || {}
       
       const parsed = parseTaskInput(title, isManuallyOverridden)
+      const currentTasks = useAppStore.getState().tasks
+      const calculatedSortOrder = currentTasks.length > 0 ? Math.max(...currentTasks.map(t => t.sort_order ?? 0)) + 1000 : 1000
+
       const input: CreateTaskInput = {
         title: parsed.title,
         due_date: parsed.due_date,
         due_time: parsed.due_time,
         priority: parsed.priority,
+        sort_order: calculatedSortOrder,
         ...cleanExtra
       }
+
+      const activeView = useAppStore.getState().activeView
+      const selectedProjectId = useAppStore.getState().selectedProjectId
 
       if (parsed.projectTag) {
         const { projects } = useAppStore.getState()
@@ -210,6 +233,7 @@ export function useTasks() {
       const tempId = 'temp-' + Math.random().toString(36).substring(7)
       const tempTask = {
         id: tempId,
+        client_id: tempId,
         title: input.title,
         notes: input.notes || '',
         status: 'todo' as const,
@@ -218,7 +242,7 @@ export function useTasks() {
         due_time: input.due_time || null,
         recurrence: input.recurrence || null,
         priority: input.priority as 0|1|2|3,
-        sort_order: tasks.length,
+        sort_order: calculatedSortOrder,
         time_estimate_mins: input.time_estimate_mins || 0,
         time_logged_mins: input.time_logged_mins || 0,
         completed_at: null,
@@ -234,9 +258,17 @@ export function useTasks() {
       }
 
       try {
-        await window.electronAPI.createTask(input)
-        removeTask(tempId)
-        incrementTasksRevision()
+        const createdTask = await window.electronAPI.createTask(input)
+        // Swap temp ID with the actual created task record natively, preserving client_id
+        useAppStore.setState((state) => {
+          const idx = state.tasks.findIndex(t => t.id === tempId)
+          if (idx !== -1) {
+            state.tasks[idx] = {
+              ...createdTask,
+              client_id: tempId
+            }
+          }
+        })
       } catch (err: any) {
         removeTask(tempId)
         setError(err.message || 'Failed to create task')
@@ -244,9 +276,10 @@ export function useTasks() {
     } catch (err: any) {
       setError(err.message || 'Failed to create task')
     }
-  }
+  }, [addTask, removeTask, setError])
 
-  const updateTask = async (input: UpdateTaskInput) => {
+  const updateTask = useCallback(async (input: UpdateTaskInput): Promise<void> => {
+    const { tasks, completedTasks } = useAppStore.getState()
     const task = tasks.find(t => t.id === input.id) || completedTasks.find(t => t.id === input.id)
     if (!task) return
 
@@ -260,15 +293,15 @@ export function useTasks() {
     
     try {
       await window.electronAPI.updateTask(input)
-      incrementTasksRevision()
     } catch (err: any) {
       // Revert on error
       updateStoreTask(previousTask)
       setError(err.message || 'Failed to update task')
     }
-  }
+  }, [updateStoreTask, setError])
 
-  const completeTask = async (id: string) => {
+  const completeTask = useCallback(async (id: string): Promise<void> => {
+    const { tasks, completedTasks } = useAppStore.getState()
     // 1. Check if the task is in the incomplete list
     const taskToComplete = tasks.find(t => t.id === id)
     if (taskToComplete) {
@@ -283,7 +316,6 @@ export function useTasks() {
       
       try {
         await window.electronAPI.completeTask(id)
-        incrementTasksRevision()
       } catch (err: any) {
         // Revert on failure
         useAppStore.setState((state) => {
@@ -313,7 +345,6 @@ export function useTasks() {
 
       try {
         await window.electronAPI.updateTask({ id, status: 'todo', completed_at: null })
-        incrementTasksRevision()
       } catch (err: any) {
         // Revert on failure
         removeTask(id)
@@ -321,9 +352,10 @@ export function useTasks() {
         setError(err.message || 'Failed to un-complete task')
       }
     }
-  }
+  }, [removeTask, addCompletedTask, addTask, setError])
 
-  const deleteTask = async (id: string) => {
+  const deleteTask = useCallback(async (id: string): Promise<void> => {
+    const { tasks, completedTasks, deletedTasks } = useAppStore.getState()
     const taskToDelete = tasks.find(t => t.id === id) || completedTasks.find(t => t.id === id) || deletedTasks.find(t => t.id === id)
     if (!taskToDelete) return
 
@@ -338,11 +370,11 @@ export function useTasks() {
       if (idx !== -1) state.completedTasks.splice(idx, 1)
     })
 
-    const alreadyDeleted = deletedTasks.some(t => t.id === id)
+    const alreadyDeleted = previousDeleted.some(t => t.id === id)
     if (alreadyDeleted) {
-      setDeletedTasks(deletedTasks.filter(t => t.id !== id))
+      setDeletedTasks(previousDeleted.filter(t => t.id !== id))
     } else {
-      setDeletedTasks([...deletedTasks, { ...taskToDelete, status: 'deleted' as const }])
+      setDeletedTasks([...previousDeleted, { ...taskToDelete, status: 'deleted' as const }])
     }
 
     if (!window.electronAPI) {
@@ -352,7 +384,6 @@ export function useTasks() {
 
     try {
       await window.electronAPI.deleteTask(id)
-      incrementTasksRevision()
     } catch (err: any) {
       // Revert on failure
       setTasks(previousTasks)
@@ -360,9 +391,10 @@ export function useTasks() {
       setDeletedTasks(previousDeleted)
       setError(err.message || 'Failed to delete task')
     }
-  }
+  }, [removeTask, setDeletedTasks, incrementTasksRevision, setTasks, setCompletedTasks, setError])
 
-  const purgeDeletedTasks = async () => {
+  const purgeDeletedTasks = useCallback(async (): Promise<void> => {
+    const { deletedTasks } = useAppStore.getState()
     const previousDeleted = [...deletedTasks]
     setDeletedTasks([])
 
@@ -377,9 +409,9 @@ export function useTasks() {
       setDeletedTasks(previousDeleted)
       setError(err.message || 'Failed to purge deleted tasks')
     }
-  }
+  }, [setDeletedTasks, incrementTasksRevision, setError])
 
-  const reorderTasks = (orderedIds: string[]) => {
+  const reorderTasks = useCallback((orderedIds: string[]): void => {
     // Optimistic reorder
     reorderStoreTasks(orderedIds)
     
@@ -389,9 +421,9 @@ export function useTasks() {
     window.electronAPI.reorderTasks(orderedIds).catch((err: any) => {
       setError(err.message || 'Failed to reorder tasks')
     })
-  }
+  }, [reorderStoreTasks, setError])
 
-  const startSession = async (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }) => {
+  const startSession = useCallback(async (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }): Promise<any> => {
     const isString = typeof payload === 'string'
     const trackingId = isString ? payload : (payload.taskId || payload.projectId || 'project-session')
     const trackingTaskId = isString ? payload : (payload.taskId || null)
@@ -411,9 +443,9 @@ export function useTasks() {
       setError(err.message || 'Failed to start session')
       return null
     }
-  }
+  }, [setActiveSession, setActiveTaskId, setError])
 
-  const stopSession = async () => {
+  const stopSession = useCallback(async (): Promise<void> => {
     if (!window.electronAPI) {
       setActiveSession(null)
       setActiveTaskId(null)
@@ -426,17 +458,21 @@ export function useTasks() {
     } catch (err: any) {
       setError(err.message || 'Failed to stop session')
     }
-  }
+  }, [setActiveSession, setActiveTaskId, setError])
 
-  return {
-    tasks: [...tasks].sort((a, b) => {
+  const sortedTasks = useMemo(() => {
+    return [...tasks].sort((a, b) => {
       const pA = a.priority ?? 0
       const pB = b.priority ?? 0
       if (pB !== pA) {
         return pB - pA
       }
       return (a.sort_order ?? 0) - (b.sort_order ?? 0)
-    }),
+    })
+  }, [tasks])
+
+  return {
+    tasks: sortedTasks,
     completedTasks,
     deletedTasks,
     isLoading,

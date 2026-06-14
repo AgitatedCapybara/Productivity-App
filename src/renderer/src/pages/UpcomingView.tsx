@@ -5,7 +5,7 @@ import { TaskSection } from '../components/tasks/TaskSection'
 import { Task } from '../types'
 
 export function UpcomingView() {
-  const { tasks, isLoading, error } = useTasks()
+  const { tasks, isLoading, error } = useTasks(true)
 
   const tomorrowStr = useMemo(() => {
     return format(addDays(new Date(), 1), 'yyyy-MM-dd')

@@ -141,4 +141,18 @@ export function runMigrations(db: Database): void {
     db.exec('PRAGMA user_version = 8')
     user_version = 8
   }
+
+  if (user_version < 9) {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_tasks_project_id ON tasks(project_id);
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_due_date ON tasks(due_date);
+      CREATE INDEX IF NOT EXISTS idx_sessions_task_id ON sessions(task_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_project_id ON sessions(project_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at);
+      CREATE INDEX IF NOT EXISTS idx_distractions_session_id ON distractions(session_id);
+    `)
+    db.exec('PRAGMA user_version = 9')
+    user_version = 9
+  }
 }

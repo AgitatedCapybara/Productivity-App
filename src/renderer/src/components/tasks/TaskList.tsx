@@ -109,10 +109,6 @@ export function TaskList({ tasks }: TaskListProps) {
     return acc
   }, [])
 
-  if (uniqueTasks.length === 0) {
-    return null
-  }
-
   const activeTask = uniqueTasks.find(t => t.id === activeId)
 
   return (
@@ -128,7 +124,7 @@ export function TaskList({ tasks }: TaskListProps) {
           <AnimatePresence initial={false}>
             {uniqueTasks.map(task => (
               <TaskItem
-                key={task.id}
+                key={task.client_id || task.id}
                 task={task}
                 onComplete={completeTask}
                 onUpdate={updateTask}

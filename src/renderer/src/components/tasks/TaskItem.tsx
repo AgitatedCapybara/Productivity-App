@@ -73,8 +73,7 @@ export const TaskItem = React.memo(function TaskItem({
   const style = isOverlay ? undefined : {
     transform: CSS.Translate.toString(transform),
     transition,
-    zIndex: isDragging ? 0 : 1,
-    opacity: isDragging ? 0.3 : 1
+    zIndex: isDragging ? 50 : 1,
   }
 
   const handleEditSubmit = () => {
@@ -362,12 +361,34 @@ export const TaskItem = React.memo(function TaskItem({
     <motion.div
       ref={setNodeRef}
       style={style}
+      layout={!isDragging && !isOverlay ? "position" : false}
       data-task-id={task.id}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: isDragging ? 0.3 : 1, y: 0 }}
-      exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+      initial={{ opacity: 0, height: 0, y: -4, overflow: 'hidden' }}
+      animate={{ 
+        opacity: isDragging ? 0.3 : 1, 
+        height: 40,
+        y: 0,
+        transitionEnd: { overflow: 'visible' }
+      }}
+      exit={{ 
+        opacity: 0, 
+        height: 0, 
+        y: -4,
+        overflow: 'hidden',
+        marginTop: 0,
+        marginBottom: 0,
+        paddingTop: 0,
+        paddingBottom: 0,
+        borderWidth: 0
+      }}
+      transition={{
+        height: { type: 'tween', ease: [0.16, 1, 0.3, 1], duration: 0.28 },
+        opacity: { type: 'tween', ease: 'linear', duration: 0.18 },
+        y: { type: 'spring', stiffness: 420, damping: 32 },
+        layout: { type: 'spring', stiffness: 380, damping: 34 }
+      }}
       className={cn(
-        "group relative flex items-center h-[40px] px-2 rounded-lg transition-colors border",
+        "group relative flex items-center h-[40px] px-2 rounded-lg border",
         isSelected 
           ? "bg-[var(--bg-elevated)] border-[var(--accent-primary)] ring-1 ring-[var(--accent-primary)]" 
           : "border-transparent hover:bg-[var(--bg-hover)]",

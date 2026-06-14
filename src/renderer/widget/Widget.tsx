@@ -181,7 +181,7 @@ export function Widget() {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
         transition={{ duration: 0.2 }}
-        className="w-[440px] h-[52px] rounded-full bg-zinc-950/90 backdrop-blur-xl border border-emerald-500/30 flex items-center justify-between px-4 text-white select-none shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
+        className="w-[440px] h-[52px] rounded-full bg-zinc-950 border border-emerald-500/30 flex items-center justify-between px-4 text-white select-none shadow-[0_8px_32px_rgba(0,0,0,0.6)]"
         style={{ WebkitAppRegion: 'drag' } as any}
         onDoubleClick={handleRestoreMainWindow}
       >
@@ -213,7 +213,7 @@ export function Widget() {
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.2 }}
-      className="w-full h-full rounded-full bg-zinc-950/95 backdrop-blur-xl border border-zinc-800/80 flex items-center justify-between px-3 text-white select-none shadow-[0_12px_24px_rgba(0,0,0,0.7)] overflow-hidden"
+      className="w-full h-full rounded-full bg-zinc-950 border border-zinc-800/80 flex items-center justify-between px-3 text-white select-none shadow-[0_12px_24px_rgba(0,0,0,0.7)] overflow-hidden"
       style={{ WebkitAppRegion: 'drag' } as any}
       onDoubleClick={handleRestoreMainWindow}
     >

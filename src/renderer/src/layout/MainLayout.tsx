@@ -42,7 +42,6 @@ export function MainLayout() {
 
     // 2. State Switch Sync (triggered by play, pause, stops in widget or main app)
     const removeStateListener = window.electronAPI.onSessionStateChanged(() => {
-      useAppStore.getState().incrementTasksRevision()
       window.electronAPI.getActiveSession().then(session => {
         if (session) {
           setActiveSession(session.id)
@@ -55,6 +54,14 @@ export function MainLayout() {
       }).catch(console.error)
     })
 
+    // 2.5 Dynamic Background Tasks Sync (any database modifications)
+    let removeTasksListener: (() => void) | undefined
+    if (window.electronAPI.onTasksStateChanged) {
+      removeTasksListener = window.electronAPI.onTasksStateChanged(() => {
+        useAppStore.getState().incrementTasksRevision()
+      })
+    }
+
     // 3. Actively Monitored Distractions Listener
     const removeDistractionListener = window.electronAPI.onSessionDistractionUpdate((count) => {
       setSessionDistractionCount(count)
@@ -65,11 +72,13 @@ export function MainLayout() {
       ? window.electronAPI.onSessionEnded((summary) => {
           console.log('[MAIN LAYOUT] Session ended with summary:', JSON.stringify(summary))
           useAppStore.getState().setRecentFocusSummary(summary)
+          useAppStore.getState().incrementTasksRevision()
         })
       : null
 
     return () => {
       if (typeof removeStateListener === 'function') removeStateListener()
+      if (typeof removeTasksListener === 'function') removeTasksListener()
       if (typeof removeDistractionListener === 'function') removeDistractionListener()
       if (typeof removeSessionEndedListener === 'function') removeSessionEndedListener()
     }

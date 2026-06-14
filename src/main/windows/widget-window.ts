@@ -54,7 +54,8 @@ export function createWidgetWindow(): BrowserWindow {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      partition: 'companion-widget'
     }
   })
 

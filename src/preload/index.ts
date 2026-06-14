@@ -88,6 +88,11 @@ const api = {
     ipcRenderer.on('session:state-changed', handler)
     return () => ipcRenderer.removeListener('session:state-changed', handler)
   },
+  onTasksStateChanged: (callback: () => void) => {
+    const handler = () => callback()
+    ipcRenderer.on('tasks:state-changed', handler)
+    return () => ipcRenderer.removeListener('tasks:state-changed', handler)
+  },
   onSessionEnded: (callback: (summary: any) => void) => {
     const handler = (_: any, summary: any) => callback(summary)
     ipcRenderer.on('session:ended', handler)

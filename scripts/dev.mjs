@@ -17,6 +17,15 @@ if (isPreview) {
 } else {
   console.log('Running full Electron dev server...');
 
+  if (os.platform() === 'win32') {
+    try {
+      console.log('[Dev Helper] Terminating any stray, background electron.exe processes to free SQLite/Cache locks...');
+      execSync('taskkill /F /IM electron.exe', { stdio: 'ignore' });
+    } catch (e) {
+      // Normal: no background processes were running
+    }
+  }
+
   try {
     const electronDir = path.join(process.cwd(), 'node_modules', 'electron');
     if (fs.existsSync(electronDir)) {
@@ -177,4 +186,3 @@ if (isPreview) {
   });
   child.on('exit', code => process.exit(code));
 }
-

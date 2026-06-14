@@ -73,15 +73,65 @@ export const useAppStore = create<AppState>()(immer((set) => ({
   setSelectedTaskIds: (ids) => set((state) => { state.selectedTaskIds = ids }),
   setLastSelectedTaskId: (id) => set((state) => { state.lastSelectedTaskId = id }),
 
-  setTasks: (tasks) => set((state) => { state.tasks = tasks }),
-  
-  setCompletedTasks: (tasks) => set((state) => { state.completedTasks = tasks }),
+  setTasks: (tasks) => set((state) => {
+    // 1. Find all active temp tasks in current state
+    const tempTasks = state.tasks.filter(t => t.id.startsWith('temp-'))
+    
+    // 2. Map existing database IDs to their client_ids
+    const existingMap = new Map(state.tasks.map(t => [t.id, t.client_id]))
+    
+    // 3. Map the incoming tasks from DB
+    const loadedMapped = tasks.map((t) => {
+      let clientId = existingMap.get(t.id)
+      
+      if (!clientId) {
+        // Try to match by properties to reconcile a newly created server task with its original temp task
+        const matchingTemp = tempTasks.find(pt => 
+          pt.title === t.title &&
+          pt.project_id === t.project_id &&
+          pt.due_date === t.due_date &&
+          pt.priority === t.priority
+        )
+        if (matchingTemp) {
+          clientId = matchingTemp.id
+          // Remove from local list so we don't double-match
+          const idx = tempTasks.indexOf(matchingTemp)
+          if (idx !== -1) tempTasks.splice(idx, 1)
+        }
+      }
+      
+      return {
+        ...t,
+        client_id: clientId || t.id
+      }
+    })
 
-  setDeletedTasks: (tasks) => set((state) => { state.deletedTasks = tasks }),
+    // 4. Any outstanding temp tasks that were not matched (still in-progress on backend)
+    const loadedClientIds = new Set(loadedMapped.map(l => l.client_id))
+    const outstandingTemp = tempTasks.filter(pt => !loadedClientIds.has(pt.id))
+
+    state.tasks = [...loadedMapped, ...outstandingTemp]
+  }),
+  
+  setCompletedTasks: (tasks) => set((state) => {
+    const existingMap = new Map(state.completedTasks.map(t => [t.id, t.client_id]))
+    state.completedTasks = tasks.map((t) => ({
+      ...t,
+      client_id: existingMap.get(t.id) || t.id
+    }))
+  }),
+
+  setDeletedTasks: (tasks) => set((state) => {
+    const existingMap = new Map(state.deletedTasks.map(t => [t.id, t.client_id]))
+    state.deletedTasks = tasks.map((t) => ({
+      ...t,
+      client_id: existingMap.get(t.id) || t.id
+    }))
+  }),
   
   addCompletedTask: (task) => set((state) => { state.completedTasks.unshift(task) }),
   
-  addTask: (task) => set((state) => { state.tasks.unshift(task) }),
+  addTask: (task) => set((state) => { state.tasks.push(task) }),
   
   updateTask: (task) => set((state) => {
     const index = state.tasks.findIndex((t: Task) => t.id === task.id)
