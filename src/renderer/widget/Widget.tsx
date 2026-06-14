@@ -11,16 +11,33 @@ export function Widget() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [summary, setSummary] = useState<SessionSummary | null>(null)
   const [tasks, setTasks] = useState<any[]>([])
+  const [projectsList, setProjectsList] = useState<any[]>([])
   const [isConfirmingStop, setIsConfirmingStop] = useState(false)
+  const [isExpanded, setIsExpanded] = useState(false)
+  const [selectedProjectIdForMenu, setSelectedProjectIdForMenu] = useState<string>('inbox-default')
 
   const fetchTasks = async () => {
     try {
-      if (window.widgetAPI.getTasksForToday) {
+      if (window.electronAPI && window.electronAPI.getTasks) {
+        const rawTasks = await window.electronAPI.getTasks()
+        setTasks(rawTasks || [])
+      } else if (window.widgetAPI && window.widgetAPI.getTasksForToday) {
         const rawTasks = await window.widgetAPI.getTasksForToday()
         setTasks(rawTasks || [])
       }
     } catch (err) {
       console.error('Failed to fetch tasks in widget:', err)
+    }
+  }
+
+  const fetchProjects = async () => {
+    try {
+      if (window.electronAPI && window.electronAPI.getProjects) {
+        const list = await window.electronAPI.getProjects()
+        setProjectsList(list || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch projects in widget:', err)
     }
   }
 
@@ -33,13 +50,13 @@ export function Widget() {
       }
     })
 
-    // Fetch initial tasks
+    // Fetch initial tasks & projects
     fetchTasks()
+    fetchProjects()
 
     // 2. Listen to ticks
     const cleanupTick = window.widgetAPI.onSessionTick((data) => {
       setElapsedSeconds(data.seconds)
-      // If we are getting ticks, a session is actively ticking
       setSummary(null)
     })
 
@@ -47,6 +64,10 @@ export function Widget() {
     const cleanupSummary = window.widgetAPI.onSessionStopped((data) => {
       setSummary(data)
       setSession(null)
+      setIsExpanded(false)
+      if (window.widgetAPI.setWidgetHeight) {
+        window.widgetAPI.setWidgetHeight(52)
+      }
     })
 
     // 4. Listen on state change notifications
@@ -54,6 +75,7 @@ export function Widget() {
     if (window.widgetAPI.onSessionStateChanged) {
       cleanupState = window.widgetAPI.onSessionStateChanged(() => {
         fetchTasks()
+        fetchProjects()
         window.widgetAPI.getActiveSession().then(s => {
           setSession(s)
           if (s) {
@@ -88,6 +110,10 @@ export function Widget() {
     }
     const data = await window.widgetAPI.stopSession()
     setIsConfirmingStop(false)
+    setIsExpanded(false)
+    if (window.widgetAPI.setWidgetHeight) {
+      await window.widgetAPI.setWidgetHeight(52)
+    }
     if (data) {
       setSummary({ 
         durationMins: data.durationMins, 
@@ -119,14 +145,37 @@ export function Widget() {
 
   const handleDone = async () => {
     try {
-      // Bring back the main app so they can write reflections
       if (window.electronAPI.restoreMainWindow) {
         await window.electronAPI.restoreMainWindow()
       }
-      // Close the widget window overlay
       window.electronAPI.closeWindow()
     } catch (err) {
       console.error('Failed to finish widget completed state:', err)
+    }
+  }
+
+  const handleOpenExpanded = async () => {
+    setIsExpanded(true)
+    if (window.widgetAPI.setWidgetHeight) {
+      await window.widgetAPI.setWidgetHeight(320)
+    }
+  }
+
+  const handleCloseExpanded = async () => {
+    setIsExpanded(false)
+    if (window.widgetAPI.setWidgetHeight) {
+      await window.widgetAPI.setWidgetHeight(52)
+    }
+  }
+
+  const handleUpdateFocusTask = async (taskId: string) => {
+    if (!session?.id) return
+    try {
+      await window.widgetAPI.updateSessionTask(session.id, taskId)
+      setSession(prev => prev ? ({ ...prev, taskId, task_id: taskId }) : null)
+      await fetchTasks()
+    } catch (err) {
+      console.error('Failed to update session focus task:', err)
     }
   }
 
@@ -166,7 +215,7 @@ export function Widget() {
     if (priority === 1) return 'bg-slate-400'
     if (priority === 2) return 'bg-amber-500' // warning color
     if (priority === 3) return 'bg-red-500' // accent primary
-    return 'bg-zinc-600'
+    return 'bg-zinc-650'
   }
 
   // Full focus completed screen formatted as a compact horizontal pill
@@ -208,18 +257,154 @@ export function Widget() {
     )
   }
 
+  // Expanded View Option
+  if (isExpanded) {
+    const activeProjectTasks = sortedTasks.filter(t => {
+      if (selectedProjectIdForMenu === 'inbox-default') {
+        return !t.project_id || t.project_id === 'inbox-default'
+      }
+      return t.project_id === selectedProjectIdForMenu
+    })
+
+    return (
+      <div 
+        className="w-[440px] h-[320px] rounded-2xl bg-zinc-950 border border-zinc-800 flex flex-col p-4 text-white select-none shadow-[0_12px_48px_rgba(0,0,0,0.8)] overflow-hidden"
+        style={{ WebkitAppRegion: 'drag' } as any}
+      >
+        {/* Top Header Row of Expanded View */}
+        <div className="flex items-center justify-between pb-3 border-b border-zinc-900 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+            <span className="text-xs font-bold font-mono tracking-tight text-emerald-400">
+              {formatTime(elapsedSeconds)}
+            </span>
+            <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold font-sans">
+              · SELECT RE-FOCUS TARGET
+            </span>
+          </div>
+
+          {/* Close expanded navigation panel */}
+          <button
+            onClick={handleCloseExpanded}
+            className="w-5 h-5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-850 flex items-center justify-center text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
+            style={{ WebkitAppRegion: 'no-drag' } as any}
+            title="Close companion menu"
+          >
+            <X size={12} strokeWidth={2.5} />
+          </button>
+        </div>
+
+        {/* Project Selector Rows / Pills */}
+        <div className="flex gap-1 py-2 overflow-x-auto shrink-0 scrollbar-none" style={{ WebkitAppRegion: 'no-drag' } as any}>
+          {[
+            { id: 'inbox-default', name: 'Inbox', color: '#6366f1' },
+            ...projectsList.filter(p => p.id !== 'inbox-default')
+          ].map(p => {
+            const isSelected = selectedProjectIdForMenu === p.id
+            const taskCount = sortedTasks.filter(t => {
+              if (p.id === 'inbox-default') return !t.project_id || t.project_id === 'inbox-default'
+              return t.project_id === p.id
+            }).length
+
+            return (
+              <button
+                key={p.id}
+                onClick={() => setSelectedProjectIdForMenu(p.id)}
+                className={`px-2.5 py-1 rounded-full text-[10px] font-semibold flex items-center gap-1.5 transition-all shrink-0 cursor-pointer ${
+                  isSelected 
+                    ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/40' 
+                    : 'bg-zinc-900/60 hover:bg-zinc-900 border border-zinc-900/50 hover:border-zinc-800 text-zinc-400'
+                }`}
+              >
+                <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: p.color || '#888' }} />
+                <span>{p.name}</span>
+                <span className={`text-[9.5px] font-mono rounded-full px-1 ${
+                  isSelected ? 'bg-indigo-500/30 text-indigo-200' : 'bg-zinc-800 text-zinc-500'
+                }`}>
+                  {taskCount}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Tasks List inside the navigation panel */}
+        <div 
+          className="flex-1 overflow-y-auto space-y-1 pr-1 mt-1 custom-scrollbar shrink-0 h-44" 
+          style={{ WebkitAppRegion: 'no-drag' } as any}
+        >
+          {activeProjectTasks.length > 0 ? (
+            activeProjectTasks.map(task => {
+              const isActive = sessionTaskId === task.id
+              return (
+                <div 
+                  key={task.id} 
+                  onClick={() => handleUpdateFocusTask(task.id)}
+                  className={`group flex items-center justify-between p-2 rounded-lg border text-xs cursor-pointer transition-all ${
+                    isActive 
+                      ? 'bg-indigo-500/10 border-indigo-500/30 shadow-inner'
+                      : 'bg-zinc-900/40 border-zinc-900/50 hover:border-zinc-800'
+                  }`}
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    {/* Tick box to complete task within widget context menu */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleCompleteTask(task.id)
+                      }}
+                      className="w-4 h-4 rounded-full bg-zinc-950 border border-zinc-850 hover:border-emerald-500 hover:bg-emerald-500/10 flex items-center justify-center shrink-0 transition-all"
+                    >
+                      <Check className="w-2.5 h-2.5 text-transparent group-hover:text-emerald-400 transition-colors" />
+                    </button>
+
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${getPriorityColor(task.priority)}`} />
+                      <span className={`truncate text-zinc-200 group-hover:text-white font-medium`}>
+                        {task.title}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                    {isActive ? (
+                      <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-full border border-emerald-500/20 shadow-sm">
+                        Focused
+                      </span>
+                    ) : (
+                      <span className="text-[9px] font-semibold text-zinc-550 group-hover:text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                        Focus Target
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })
+          ) : (
+            <div className="py-12 text-center text-zinc-600 text-xs italic flex flex-col items-center justify-center gap-2">
+              <Sparkles className="w-5 h-5 text-zinc-700 animate-pulse" />
+              <span>Zero pending tasks in this project segment.</span>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.2 }}
-      className="w-full h-full rounded-full bg-zinc-950 border border-zinc-800/80 flex items-center justify-between px-3 text-white select-none shadow-[0_12px_24px_rgba(0,0,0,0.7)] overflow-hidden"
+      className="w-[440px] h-[52px] rounded-full bg-zinc-950 border border-zinc-800/80 flex items-center justify-between px-3 text-white select-none shadow-[0_12px_24px_rgba(0,0,0,0.7)] overflow-hidden"
       style={{ WebkitAppRegion: 'drag' } as any}
       onDoubleClick={handleRestoreMainWindow}
     >
       {/* 1. Timer Panel & Controls */}
       <div className="flex items-center gap-1.5 shrink-0" style={{ WebkitAppRegion: 'no-drag' } as any}>
-        {/* Play/Pause control */}
         <button
           onClick={handleTogglePause}
           className="w-6 h-6 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-white transition-all cursor-pointer"
@@ -232,7 +417,6 @@ export function Widget() {
           )}
         </button>
 
-        {/* Stop control */}
         <button
           onClick={handleStop}
           onMouseLeave={() => setIsConfirmingStop(false)}
@@ -250,16 +434,13 @@ export function Widget() {
           )}
         </button>
 
-        {/* Spacer line */}
         <div className="h-4 w-[1px] bg-zinc-800/80 mx-0.5" />
 
-        {/* Dynamic Prominent Timer Badge */}
         <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border transition-all ${
           session?.status === 'paused' 
             ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.05)]' 
             : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.05)]'
         }`}>
-          {/* Pulsing state dot indicator */}
           <span className="relative flex h-1.5 w-1.5 shrink-0">
             {session?.status !== 'paused' && (
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/80 opacity-75"></span>
@@ -274,28 +455,31 @@ export function Widget() {
         </div>
       </div>
 
-      {/* 2. Active Focus Task Target */}
+      {/* 2. Interactive Active Focus Task Target area */}
       <div 
-        className="flex-1 flex items-center px-1.5 py-0.5 bg-zinc-900/30 border border-transparent hover:border-zinc-800/20 rounded-lg min-w-0 max-w-[150px] mx-1 transition-colors"
+        onClick={handleOpenExpanded}
+        className="flex-1 flex items-center px-1.5 py-0.5 bg-zinc-905 border border-zinc-800/50 hover:bg-zinc-900 hover:border-indigo-500/30 rounded-lg min-w-0 max-w-[150px] mx-1 transition-all cursor-pointer"
         style={{ WebkitAppRegion: 'no-drag' } as any}
+        title="Press to change task context"
       >
         {displayTask ? (
           <div className="flex items-center gap-1.5 w-full min-w-0">
-            {/* Interactive completion check */}
             <button
-              onClick={() => handleCompleteTask(displayTask.id)}
+              onClick={(e) => {
+                e.stopPropagation()
+                handleCompleteTask(displayTask.id)
+              }}
               className="w-3.5 h-3.5 rounded-full bg-zinc-900 border border-zinc-700 hover:border-emerald-500/80 hover:bg-emerald-500/10 flex items-center justify-center group shrink-0 transition-all cursor-pointer"
               title="Complete current task"
             >
               <Check className="w-2 h-2 text-transparent group-hover:text-emerald-400 transition-colors" />
             </button>
             
-            {/* Title with priority indicator */}
             <div className="flex flex-col min-w-0 leading-none">
-              <span className="text-[8px] text-zinc-500 font-semibold tracking-wider uppercase mb-0.5">Current Focus</span>
+              <span className="text-[7.5px] text-zinc-500 font-bold tracking-wider uppercase mb-0.5">Focus Scope</span>
               <div className="flex items-center gap-1 min-w-0">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${getPriorityColor(displayTask.priority)}`} />
-                <span className="text-[11px] font-medium text-zinc-200 truncate w-full" title={displayTask.title}>
+                <span className="text-[10.5px] font-semibold text-zinc-200 truncate w-full" title={displayTask.title}>
                   {displayTask.title}
                 </span>
               </div>
@@ -305,8 +489,8 @@ export function Widget() {
           <div className="flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
             <div className="flex flex-col leading-none">
-              <span className="text-[8px] text-zinc-500 font-semibold tracking-wider uppercase mb-0.5">Current Focus</span>
-              <span className="text-[11px] font-medium text-emerald-400 leading-none">Deep Focus</span>
+              <span className="text-[7.5px] text-zinc-500 font-bold tracking-wider uppercase mb-0.5">Focus Scope</span>
+              <span className="text-[10.5px] font-bold text-emerald-400 leading-none">Deep Focus</span>
             </div>
           </div>
         )}
@@ -324,7 +508,7 @@ export function Widget() {
         ) : (
           <div className="flex flex-col justify-center leading-none">
             <span className="text-[8px] text-zinc-500 font-semibold tracking-wider uppercase mb-0.5">Up Next</span>
-            <span className="text-[10px] font-medium text-emerald-500/80 italic leading-none">Queue clear</span>
+            <span className="text-[10px] font-medium text-emerald-500/80 italic leading-none font-sans">Queue clear</span>
           </div>
         )}
       </div>

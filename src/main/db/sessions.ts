@@ -192,3 +192,16 @@ export function renameSession(sessionId: string, customName: string): void {
     custom_name: customName
   })
 }
+
+export function updateSessionTask(sessionId: string, taskId: string | null): void {
+  const db = getDb()
+  const stmt = db.prepare(`
+    UPDATE sessions
+    SET task_id = @task_id
+    WHERE id = @id
+  `)
+  stmt.run({
+    id: sessionId,
+    task_id: taskId
+  })
+}

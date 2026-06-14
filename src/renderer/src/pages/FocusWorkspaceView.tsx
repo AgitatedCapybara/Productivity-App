@@ -1,22 +1,66 @@
 // src/renderer/src/pages/FocusWorkspaceView.tsx
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { 
   Play, 
   Pause, 
   Square, 
   AlertTriangle, 
-  Compass
+  Compass,
+  Check,
+  ListTodo,
+  Sparkles
 } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/utils'
 import { PostSessionOverview } from '../components/tasks/PostSessionOverview'
+import { useTasks } from '../hooks/useTasks'
 
 export function FocusWorkspaceView() {
   const activeSessionId = useAppStore(state => state.activeSessionId)
   const setActiveSession = useAppStore(state => state.setActiveSession)
   const setActiveTaskId = useAppStore(state => state.setActiveTaskId)
   const projects = useAppStore(state => state.projects)
+
+  const { tasks, completeTask } = useTasks(true)
+  const [activeTab, setActiveTab] = useState<string>('inbox-default')
+
+  // Find all projects, ensuring we always have Inbox, Personal, Work
+  const tabsList = useMemo(() => {
+    const list = [...projects]
+    if (!list.some(p => p.id === 'inbox-default')) {
+      list.unshift({
+        id: 'inbox-default',
+        name: 'Inbox',
+        color: '#6366f1',
+        icon: 'inbox',
+        sort_order: 0,
+        created_at: new Date().toISOString()
+      })
+    }
+    return list
+  }, [projects])
+
+  // Get active (incomplete) tasks for the selected project
+  const filteredTasks = useMemo(() => {
+    const todoTasks = tasks.filter(t => t.status !== 'done' && t.status !== 'deleted')
+    return todoTasks.filter(task => {
+      if (activeTab === 'inbox-default') {
+        return !task.project_id || task.project_id === 'inbox-default'
+      }
+      return task.project_id === activeTab
+    })
+  }, [tasks, activeTab])
+
+  const handleShiftFocus = async (taskId: string) => {
+    if (!session || !window.electronAPI.updateSessionTask) return
+    try {
+      await window.electronAPI.updateSessionTask(session.id, taskId)
+      setSession((prev: any) => prev ? ({ ...prev, taskId, task_id: taskId }) : null)
+    } catch (err) {
+      console.error('Failed to update session focus task:', err)
+    }
+  }
 
   // Session state from backend
   const [session, setSession] = useState<any>(null)
@@ -273,13 +317,16 @@ export function FocusWorkspaceView() {
 
   // Render Active Immersive Focus View State
   return (
-    <div className="flex-1 bg-[#09090b] flex flex-col text-white px-8 py-10 overflow-hidden relative select-none">
+    <div className="flex-1 bg-[#09090b] flex flex-col text-white px-8 py-10 overflow-y-auto relative select-none">
       {/* Background soft glowing blur */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/[0.02] blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-sky-500/[0.02] blur-[120px] rounded-full pointer-events-none" />
 
-      {/* Header section (motivational message) */}
-      <div className="max-w-4xl w-full mx-auto flex-1 flex flex-col items-center justify-center gap-10">
+      {/* Main Grid Wrapper */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-6xl w-full mx-auto flex-1 items-start mt-4 relative z-10">
+        
+        {/* Left Column: Clock and Diagnostics Panel */}
+        <div className="lg:col-span-7 flex flex-col items-center justify-center space-y-8 w-full">
         
         {/* Dynamic focus quotes */}
         <AnimatePresence mode="wait">
@@ -594,6 +641,126 @@ export function FocusWorkspaceView() {
               If the minimized overlay doesn't appear automatically on your desktop, toggle this inspect panel to trace active threads, window names, SQLite sessions, and execute force-trigger controls.
             </p>
           )}
+        </div>
+
+      </div>
+
+      {/* Right Column: Focus Workspace Tasks Center / Backlogger */}
+      <div className="lg:col-span-5 w-full bg-zinc-950/40 border border-zinc-900 rounded-3xl p-5 flex flex-col space-y-4 backdrop-blur-md h-[580px]">
+          <div className="flex items-center justify-between border-b border-zinc-900 pb-3 shrink-0">
+            <div>
+              <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-2">
+                <ListTodo size={15} className="text-indigo-400" />
+                Session Backlogger
+              </h3>
+              <p className="text-[10px] text-zinc-400 mt-0.5">Toggle projects & complete tasks inline</p>
+            </div>
+            <span className="text-[10px] font-mono bg-zinc-900 border border-zinc-800 text-zinc-400 px-2.5 py-1 rounded-full">
+              {filteredTasks.length} pending
+            </span>
+          </div>
+
+          {/* Project Navigation tab buttons */}
+          <div className="flex gap-1 overflow-x-auto pb-1 shrink-0 scrollbar-none">
+            {tabsList.map(tab => {
+              const isSelected = activeTab === tab.id
+              const count = tasks.filter(t => {
+                const isTodo = t.status !== 'done' && t.status !== 'deleted'
+                if (tab.id === 'inbox-default') return isTodo && (!t.project_id || t.project_id === 'inbox-default')
+                return isTodo && t.project_id === tab.id
+              }).length
+
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={cn(
+                    "px-3 py-1.5 rounded-xl text-[11px] font-semibold flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap border shrink-0",
+                    isSelected
+                      ? "bg-indigo-500/10 text-indigo-300 border-indigo-550/30"
+                      : "bg-zinc-900/40 hover:bg-zinc-900 border-zinc-900/50 text-zinc-400 hover:text-zinc-200"
+                  )}
+                >
+                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: tab.color || '#fff' }} />
+                  <span>{tab.name}</span>
+                  <span className={cn(
+                    "text-[9px] font-mono px-1 rounded-full shrink-0",
+                    isSelected ? "bg-indigo-500/20 text-indigo-100" : "bg-zinc-800 text-zinc-500"
+                  )}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+
+          {/* Scrollable backlog task rows */}
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+            {filteredTasks.length > 0 ? (
+              filteredTasks.map(task => {
+                const isSessionTask = session?.taskId === task.id || session?.task_id === task.id
+                return (
+                  <div
+                    key={task.id}
+                    className={cn(
+                      "group p-3 rounded-2xl border text-xs flex items-center justify-between transition-all hover:bg-zinc-900/30",
+                      isSessionTask
+                        ? "bg-indigo-500/5 border-indigo-500/20 shadow-md shadow-indigo-500/[0.02]"
+                        : "bg-zinc-900/20 border-zinc-900/85 hover:border-zinc-800"
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      {/* Checkbox trigger to complete inline */}
+                      <button
+                        onClick={async () => {
+                          try {
+                            await completeTask(task.id)
+                          } catch (err) {
+                            console.error(err)
+                          }
+                        }}
+                        className="w-4 h-4 rounded-full border border-zinc-800 hover:border-emerald-500 hover:bg-emerald-500/10 flex items-center justify-center shrink-0 transition-all cursor-pointer"
+                        title="Complete task"
+                      >
+                        <Check className="w-2.5 h-2.5 text-transparent group-hover:text-emerald-400 transition-colors" />
+                      </button>
+
+                      {/* Info & Title */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={cn(
+                          "w-1.5 h-1.5 rounded-full shrink-0",
+                          task.priority === 3 ? "bg-red-500 animate-pulse" : task.priority === 2 ? "bg-amber-500" : "bg-slate-400"
+                        )} />
+                        <span className="truncate text-zinc-200 group-hover:text-white font-medium text-[11.5px] break-all">
+                          {task.title}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      {isSessionTask ? (
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                          Focused
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleShiftFocus(task.id)}
+                          className="text-[9px] font-semibold text-zinc-400 hover:text-indigo-400 bg-zinc-900 border border-zinc-850 px-2 py-1 rounded-lg opacity-0 lg:group-hover:opacity-100 transition-all cursor-pointer"
+                        >
+                          Focus
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )
+              })
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-center py-20 text-zinc-600 space-y-2">
+                <Sparkles className="w-8 h-8 text-zinc-750 animate-pulse" />
+                <p className="text-xs italic">All clear! No pending tasks in this project category.</p>
+              </div>
+            )}
+          </div>
         </div>
 
       </div>

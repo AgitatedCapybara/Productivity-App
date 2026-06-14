@@ -3,37 +3,142 @@ import * as chrono from 'chrono-node'
 import { useAppStore } from '../store/useAppStore'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
 
-export function parseTaskInput(raw: string, keepDateText = false) {
+export function splitChronoText(text: string): string[] {
+  // Matches preposition times like "at 3pm", "around 10:30am", "by noon", "at 5"
+  const prepTimeRegex = /(?:at|around|by|in)\s+(?:\d{1,2}(?::\d{2})?\s*(?:am|pm|AM|PM)?|noon|midnight|\d{1,2})/gi;
+  // Matches standalone times like "3pm", "10:30am"
+  const standaloneTimeRegex = /\b\d{1,2}(?::\d{2})?\s*(?:am|pm|AM|PM)\b/gi;
+  // Matches relative day/weekday expressions
+  const relativeDaysRegex = /\b(?:today|tomorrow|tonight|yesterday|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi;
+
+  const matches: { start: number; end: number; text: string }[] = [];
+  let match;
+
+  // 1. Match preposition times
+  while ((match = prepTimeRegex.exec(text)) !== null) {
+    if (!matches.some(existing => match!.index >= existing.start && match!.index < existing.end)) {
+      matches.push({ start: match.index, end: match.index + match[0].length, text: match[0] });
+    }
+  }
+
+  // 2. Match standalone times
+  while ((match = standaloneTimeRegex.exec(text)) !== null) {
+    if (!matches.some(existing => match!.index >= existing.start && match!.index < existing.end)) {
+      matches.push({ start: match.index, end: match.index + match[0].length, text: match[0] });
+    }
+  }
+
+  // 3. Match relative days
+  while ((match = relativeDaysRegex.exec(text)) !== null) {
+    if (!matches.some(existing => match!.index >= existing.start && match!.index < existing.end)) {
+      matches.push({ start: match.index, end: match.index + match[0].length, text: match[0] });
+    }
+  }
+
+  matches.sort((a, b) => a.start - b.start);
+
+  const parts: string[] = [];
+  let currentPos = 0;
+  for (const m of matches) {
+    if (m.start > currentPos) {
+      const skipped = text.substring(currentPos, m.start).trim();
+      if (skipped) {
+        parts.push(skipped);
+      }
+    }
+    parts.push(m.text.trim());
+    currentPos = m.end;
+  }
+  if (currentPos < text.length) {
+    const remaining = text.substring(currentPos).trim();
+    if (remaining) parts.push(remaining);
+  }
+
+  return parts.filter(Boolean);
+}
+
+export function parseTaskInput(raw: string, keepDateText = false, ignoredPhrases: string[] = []) {
   let title = raw
+  
+  // Track all potential parseable phrases with details
+  const parsedPhrases: { text: string; type: 'project' | 'priority' | 'date'; ignored: boolean }[] = []
+
   let projectTag: string | null = null
   const projectMatch = title.match(/@(\w+)/)
   if (projectMatch) {
-    projectTag = projectMatch[1]
-    title = title.replace(projectMatch[0], '').trim()
+    const fullMatchText = projectMatch[0]
+    const isIgnored = ignoredPhrases.some(phrase => phrase.toLowerCase() === fullMatchText.toLowerCase())
+    parsedPhrases.push({
+      text: fullMatchText,
+      type: 'project',
+      ignored: isIgnored
+    })
+    
+    if (!isIgnored) {
+      projectTag = projectMatch[1]
+      title = title.replace(fullMatchText, '').trim()
+    }
   }
 
   let priority: 0 | 1 | 2 | 3 = 0
   const priorityMatch = title.match(/\bp([123])\b/i)
   if (priorityMatch) {
-    if (priorityMatch[1] === '1') priority = 3
-    else if (priorityMatch[1] === '2') priority = 2
-    else if (priorityMatch[1] === '3') priority = 1
+    const fullMatchText = priorityMatch[0]
+    const isIgnored = ignoredPhrases.some(phrase => phrase.toLowerCase() === fullMatchText.toLowerCase())
+    parsedPhrases.push({
+      text: fullMatchText,
+      type: 'priority',
+      ignored: isIgnored
+    })
     
-    title = title.replace(priorityMatch[0], '').trim()
+    if (!isIgnored) {
+      if (priorityMatch[1] === '1') priority = 3
+      else if (priorityMatch[1] === '2') priority = 2
+      else if (priorityMatch[1] === '3') priority = 1
+      
+      title = title.replace(fullMatchText, '').trim()
+    }
   }
 
-  const results = chrono.parse(title, new Date(), { forwardDate: true })
-  if (results.length === 0) return { title, due_date: null, due_time: null, priority, projectTag }
+  // Generate reference parsing results to see what words were captured
+  const rawResults = chrono.parse(title, new Date(), { forwardDate: true })
+  for (const res of rawResults) {
+    const splitParts = splitChronoText(res.text)
+    for (const part of splitParts) {
+      const isIgnored = ignoredPhrases.some(phrase => phrase.toLowerCase() === part.toLowerCase())
+      parsedPhrases.push({
+        text: part,
+        type: 'date',
+        ignored: isIgnored
+      })
+    }
+  }
+
+  // Create masked title by removing any ignored phrases entirely so that chrono doesn't parse them
+  let chronoTitle = title
+  for (const phrase of ignoredPhrases) {
+    const escaped = phrase.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+    const isWord = /^\w+$/.test(phrase)
+    const regex = isWord ? new RegExp(`\\b${escaped}\\b`, 'gi') : new RegExp(escaped, 'gi')
+    chronoTitle = chronoTitle.replace(regex, ' ')
+  }
+
+  // Execute actual parsing on the masked text to get real date/time outputs
+  const activeResults = chrono.parse(chronoTitle, new Date(), { forwardDate: true })
+
+  if (activeResults.length === 0) {
+    return { title, due_date: null, due_time: null, priority, projectTag, parsedPhrases }
+  }
   
   // Start with the first result's date info
-  const firstResult = results[0]
+  const firstResult = activeResults[0]
   let date = firstResult.start.date()
   let hasTime = firstResult.start.isCertain('hour')
   let hasExplicitDate = firstResult.start.isCertain('day') || firstResult.start.isCertain('weekday') || firstResult.start.isCertain('month')
 
   // Merge subsequent results in case date and time are parsed as separate blocks (e.g., "tomorrow 10am")
-  for (let i = 1; i < results.length; i++) {
-    const res = results[i]
+  for (let i = 1; i < activeResults.length; i++) {
+    const res = activeResults[i]
     if (res.start.isCertain('hour')) {
       hasTime = true
       const hour = res.start.get('hour')
@@ -66,28 +171,17 @@ export function parseTaskInput(raw: string, keepDateText = false) {
     : null
     
   if (keepDateText) {
-    return { title, due_date, due_time, priority, projectTag }
+    return { title, due_date, due_time, priority, projectTag, parsedPhrases }
   }
 
-  // Handle surrounding parentheses brackets cleanly (e.g. "(tomorrow)") in descending index order
-  const sortedResults = [...results].sort((a, b) => b.index - a.index)
-  for (const res of sortedResults) {
-    let startIndex = res.index
-    let endIndex = res.index + res.text.length
-    
-    if (startIndex > 0 && title[startIndex - 1] === '(' && title[endIndex] === ')') {
-      startIndex = startIndex - 1
-      endIndex = endIndex + 1
-    } else if (startIndex > 0 && title[startIndex - 1] === '[' && title[endIndex] === ']') {
-      startIndex = startIndex - 1
-      endIndex = endIndex + 1
-    }
-    
-    title = title.slice(0, startIndex) + title.slice(endIndex)
+  // Clean the title by removing parsed chronological texts from activeResults
+  for (const res of activeResults) {
+    const escaped = res.text.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+    title = title.replace(new RegExp(escaped, 'i'), '')
   }
   
   title = title.replace(/\(\s*\)/g, '').replace(/\[\s*\]/g, '').replace(/\s+/g, ' ').trim()
-  return { title, due_date, due_time, priority, projectTag }
+  return { title, due_date, due_time, priority, projectTag, parsedPhrases }
 }
 
 export function useTasks(enableLoading = false) {
@@ -195,12 +289,12 @@ export function useTasks(enableLoading = false) {
     }
   }, [tasksRevision, enableLoading])
 
-  const createTask = useCallback(async (title: string, extra?: Partial<CreateTaskInput> & { isManuallyOverridden?: boolean }): Promise<void> => {
+  const createTask = useCallback(async (title: string, extra?: Partial<CreateTaskInput> & { isManuallyOverridden?: boolean; ignoredPhrases?: string[] }): Promise<void> => {
     try {
       const isManuallyOverridden = extra?.isManuallyOverridden || false
-      const { isManuallyOverridden: _, ...cleanExtra } = extra || {}
+      const { isManuallyOverridden: _, ignoredPhrases = [], ...cleanExtra } = extra || {}
       
-      const parsed = parseTaskInput(title, isManuallyOverridden)
+      const parsed = parseTaskInput(title, isManuallyOverridden, ignoredPhrases)
       const currentTasks = useAppStore.getState().tasks
       const calculatedSortOrder = currentTasks.length > 0 ? Math.max(...currentTasks.map(t => t.sort_order ?? 0)) + 1000 : 1000
 

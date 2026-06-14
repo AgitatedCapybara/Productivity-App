@@ -495,7 +495,7 @@ export function AnalyticsView() {
               </div>
 
               <div className="bg-zinc-900/30 border border-zinc-800/40 p-3.5 rounded-2xl relative overflow-hidden">
-                <span className="text-[10px] font-semibold text-zinc-500 tracking-wider uppercase block mb-1">SWAP OVERHEAD</span>
+                <span className="text-[10px] font-semibold text-zinc-500 tracking-wider uppercase block mb-1">DISTRACTIONS</span>
                 <span className={cn(
                   "text-xl font-bold font-mono",
                   totalDistractionCount > 0 ? "text-rose-400" : "text-emerald-400"
@@ -511,7 +511,7 @@ export function AnalyticsView() {
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider font-mono">Productive Depth Timeline</h3>
-                  <p className="text-[10px] text-zinc-500 mt-0.5">Chronological focus minutes & productive trends spanning {timeScaleDays} {timeScaleDays === 1 ? 'day' : 'days'}</p>
+                  <p className="text-[10px] text-zinc-500 mt-0.5">Visualization of your productivity and focus spanning {timeScaleDays} {timeScaleDays === 1 ? 'day' : 'days'}</p>
                 </div>
                 <div className="flex items-center gap-3 text-[10px] text-zinc-400">
                   <div className="flex items-center gap-1.5">
@@ -720,7 +720,7 @@ export function AnalyticsView() {
             <div className="bg-zinc-900/30 border border-zinc-800/40 rounded-2xl p-4 flex-1 min-h-[220px] flex flex-col justify-start">
               <div className="mb-4">
                 <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider font-mono">Global Wasted Streams</h3>
-                <p className="text-[10px] text-zinc-500 mt-0.5">Wasted time across all active sessions, grouped by detected foreground window apps.</p>
+                <p className="text-[10px] text-zinc-500 mt-0.5">Wasted time across all of your sessions, grouped by detected blacklisted window apps.</p>
               </div>
 
               {globalTopDistractions.length > 0 ? (
@@ -771,7 +771,7 @@ export function AnalyticsView() {
           {/* RIGHT COLUMN: Chronological Session Log */}
           <div className="lg:col-span-4 flex flex-col bg-zinc-900/20 border border-zinc-800/40 rounded-2.5xl p-4 min-h-0 overflow-hidden">
             <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-wider font-mono mb-1">Focus Log History</h3>
-            <p className="text-[10px] text-zinc-500 mb-4">Click a session block to evaluate its timeline details.</p>
+            <p className="text-[10px] text-zinc-500 mb-4">Click a session log to review its stats.</p>
 
             {/* List */}
             <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-1">

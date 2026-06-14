@@ -108,11 +108,11 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
 
   // Clarity descriptors
   const getClarityData = (rating: number) => {
-    if (rating <= 2) return { label: "Deeply Scattered", desc: "Attention constantly snapped by external variables." }
-    if (rating <= 4) return { label: "Surface Layer Focus", desc: "Mind drifting frequently; keeping task in sight required high effort." }
-    if (rating <= 6) return { label: "Steady Execution", desc: "Solid performance, standard attention retention." }
-    if (rating <= 8) return { label: "Deep Cognitive Flow", desc: "Excellent speed, quick problem-solving bursts." }
-    return { label: "Sublime Insight State", desc: "Prism focus. Time blurred as blocks of logic connected seamlessly." }
+    if (rating <= 2) return { label: "Mind Scattered", desc: "Attention constantly taken away by distractions." }
+    if (rating <= 4) return { label: "Surface Layer Focus", desc: "Mind drifting a lot, keeping focus on tasks required high effort." }
+    if (rating <= 6) return { label: "Steady Execution", desc: "Solid performance, standard attention." }
+    if (rating <= 8) return { label: "Deep Cognitive Flow", desc: "Excellent speed, brain worked like an engine." }
+    return { label: "Omnipresent Brain", desc: "Focus that is out of this world. Time blurred as every neuron fires together." }
   }
 
   const activeEnergy = getEnergyData(energyRating)
@@ -159,8 +159,8 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
 
   // Performance tier mapping matching requested metrics: 0% red, 50% yellow, 80% green, 100% blue
   let performanceTier = {
-    title: "Flow State Master",
-    desc: "Impeccable execution! Absolute shield integrity during the entire developer block.",
+    title: "Flow State",
+    desc: "Amazing work! Keep it up and maybe you'll get a lollipop.",
     color: "text-blue-400",
     accent: "from-blue-500/10 to-indigo-500/5",
     border: "border-blue-500/25",
@@ -170,8 +170,8 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
 
   if (productivePct < 50) {
     performanceTier = {
-      title: "Needs Alignment",
-      desc: "Significant stream-switches detected. Try refining your blacklist or environment blockers.",
+      title: "Distraction Demon",
+      desc: "You were pretty distacted, try better next time! Was this a tracking error? Edit blacklisted keywords in your settings.",
       color: "text-rose-450",
       accent: "from-rose-500/10 to-transparent",
       border: "border-rose-500/25",
@@ -180,8 +180,8 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
     }
   } else if (productivePct < 80) {
     performanceTier = {
-      title: "Steady Apprentice",
-      desc: "Solid concentration effort. Continue building stamina to shield your focus windows.",
+      title: "Working On It",
+      desc: "Nice effort. Keep building stamina to watch them charts grow.",
       color: "text-yellow-450",
       accent: "from-yellow-500/10 to-transparent",
       border: "border-yellow-500/25",
@@ -190,8 +190,8 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
     }
   } else if (productivePct < 100) {
     performanceTier = {
-      title: "Cognitive Flow",
-      desc: "Focus maintained! Unproductive focus-swapping windows were kept thoroughly at bay.",
+      title: "Productive",
+      desc: "Great focus! You've done well.",
       color: "text-emerald-450",
       accent: "from-emerald-500/10 to-transparent",
       border: "border-emerald-500/25",
@@ -410,7 +410,7 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
                 <div>
                   <h4 className="text-xs font-bold text-emerald-400">Pristine Safety Shield</h4>
                   <p className="text-zinc-500 text-xs mt-0.5 leading-normal">
-                    You did not launch any blocked tabs, applications, or unproductive focus-swapping windows during this block. Total clarity maintained.
+                    You did not switch to any blocked tabs or applications. Nice job son (im crine).
                   </p>
                 </div>
               </div>
@@ -426,7 +426,7 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
               Self-Reflection Log
             </h3>
             <p className="text-zinc-500 text-[11px] mt-0.5">
-              Evaluate your mental states to track your developer productivity metrics and logs over time.
+              Self-reflect on how you did to track your productivity and logs over time.
             </p>
           </div>
 
@@ -435,7 +435,7 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
             <div className="flex items-center justify-between text-xs font-sans">
               <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider font-mono flex items-center gap-1">
                 <Brain size={12} className="text-indigo-400" />
-                Cognitive Clarity
+                Focus Level
               </span>
               <span className="text-xs font-bold text-indigo-400 font-mono">
                 {clarityRating}/10
@@ -534,7 +534,7 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
             <textarea
               value={reflection}
               onChange={(e) => setReflection(e.target.value)}
-              placeholder="Document your milestones completed, bugs solved, or mental roadblocks conquered in this focus block..."
+              placeholder="Document milestones and your reflections..."
               className="flex-1 min-h-[110px] bg-zinc-950/40 border border-zinc-800/80 p-3 rounded-xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 font-sans leading-relaxed resize-none custom-scrollbar"
             />
           </div>

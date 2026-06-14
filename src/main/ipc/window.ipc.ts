@@ -128,4 +128,13 @@ export function registerWindowHandlers(mainWindow: BrowserWindow) {
     }
     return { success: false, message: 'Widget window was not found.' }
   })
+
+  ipcMain.handle('window:setWidgetHeight', (event, height: number) => {
+    const win = BrowserWindow.fromWebContents(event.sender)
+    if (win) {
+      const [w] = win.getSize()
+      win.setSize(w, height)
+    }
+    return { success: true }
+  })
 }

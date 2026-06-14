@@ -12,7 +12,8 @@ import {
   deleteSession,
   clearSessionHistory,
   updateSessionReflection,
-  renameSession
+  renameSession,
+  updateSessionTask
 } from '../db/sessions'
 import { startMonitoring, stopMonitoring } from '../services/distraction-monitor'
 import { getDb } from '../db/database'
@@ -293,6 +294,12 @@ export function registerSessionHandlers() {
 
   ipcMain.handle('focus-session:rename', async (_, payload: { sessionId: string; customName: string }) => {
     renameSession(payload.sessionId, payload.customName)
+    notifyWindowsOfStateChange()
+    return { success: true }
+  })
+
+  ipcMain.handle('focus-session:updateTask', async (_, payload: { sessionId: string; taskId: string | null }) => {
+    updateSessionTask(payload.sessionId, payload.taskId)
     notifyWindowsOfStateChange()
     return { success: true }
   })

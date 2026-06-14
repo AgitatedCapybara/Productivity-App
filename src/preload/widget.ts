@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 
 const api = {
   getTasks: () => ipcRenderer.invoke('tasks:getAll'),
+  getProjects: () => ipcRenderer.invoke('projects:getAll'),
   getTasksDueToday: () => ipcRenderer.invoke('tasks:getDueToday'),
   completeTask: (id: string) => ipcRenderer.invoke('tasks:complete', id),
   createTask: (input: any) => ipcRenderer.invoke('tasks:create', input),
@@ -18,6 +19,8 @@ const widgetAPI = {
   stopSession: () => ipcRenderer.invoke('focus-session:stop'),
   getTasksForToday: () => ipcRenderer.invoke('tasks:getForToday'),
   completeTask: (id: string) => ipcRenderer.invoke('tasks:complete', id),
+  updateSessionTask: (sessionId: string, taskId: string | null) => ipcRenderer.invoke('focus-session:updateTask', { sessionId, taskId }),
+  setWidgetHeight: (height: number) => ipcRenderer.invoke('window:setWidgetHeight', height),
   onSessionTick: (callback: (elapsed: { seconds: number, distractionCount: number, targetDurationMins?: number }) => void) => {
     const handler = (_: any, elapsed: { seconds: number, distractionCount: number, targetDurationMins?: number }) => callback(elapsed)
     ipcRenderer.on('session:tick', handler)

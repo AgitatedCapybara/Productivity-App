@@ -78,6 +78,7 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
   const [inputValue, setInputValue] = useState('')
   const [parsedInfo, setParsedInfo] = useState<ReturnType<typeof parseTaskInput> | null>(null)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [ignoredPhrases, setIgnoredPhrases] = useState<string[]>([])
 
   // Manual scheduling overrides states
   const [isManualEditing, setIsManualEditing] = useState(false)
@@ -93,6 +94,19 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
   const activeView = useAppStore(state => state.activeView)
   const selectedProjectId = useAppStore(state => state.selectedProjectId)
 
+  // Sync / Prune ignored phrases based on current text input
+  useEffect(() => {
+    if (!inputValue) {
+      setIgnoredPhrases([])
+    } else {
+      setIgnoredPhrases(prev => {
+        const next = prev.filter(p => inputValue.toLowerCase().includes(p.toLowerCase()))
+        if (next.length !== prev.length) return next
+        return prev
+      })
+    }
+  }, [inputValue])
+
   useEffect(() => {
     if (!inputValue.trim()) {
       setParsedInfo(null)
@@ -100,8 +114,8 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
     }
 
     const timer = setTimeout(() => {
-      const parsed = parseTaskInput(inputValue)
-      if (parsed.due_date || parsed.priority > 0 || parsed.projectTag) {
+      const parsed = parseTaskInput(inputValue, false, ignoredPhrases)
+      if (parsed.due_date || parsed.priority > 0 || parsed.projectTag || parsed.parsedPhrases?.length) {
         setParsedInfo(parsed)
       } else {
         setParsedInfo(null)
@@ -109,7 +123,18 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
     }, 150)
 
     return () => clearTimeout(timer)
-  }, [inputValue])
+  }, [inputValue, ignoredPhrases])
+
+  const handleToggleIgnorePhrase = (phraseText: string) => {
+    setIgnoredPhrases(prev => {
+      const exists = prev.some(p => p.toLowerCase() === phraseText.toLowerCase())
+      if (exists) {
+        return prev.filter(p => p.toLowerCase() !== phraseText.toLowerCase())
+      } else {
+        return [...prev, phraseText]
+      }
+    })
+  }
 
   // Sync state values to inferred ones as long as manual editing hasn't taken active control
   useEffect(() => {
@@ -167,12 +192,14 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
       due_time: customDueTime || null,
       priority: customPriority,
       project_id: projectId !== undefined ? projectId : (customProjectId === 'inbox-default' ? null : customProjectId),
-      isManuallyOverridden
+      isManuallyOverridden,
+      ignoredPhrases
     }
 
     createTask(inputValue, overrides)
     setInputValue('')
     setParsedInfo(null)
+    setIgnoredPhrases([])
     setIsManualEditing(false)
     setIsManuallyOverridden(false)
     setShowShakeAlert(false)
@@ -292,6 +319,50 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
                   {isManualEditing ? "Lock Adjustments" : "Manual Edit"}
                 </button>
               </div>
+
+              {/* Active & Ignored parsed words toggle list */}
+              {parsedInfo?.parsedPhrases && parsedInfo.parsedPhrases.length > 0 && (
+                <div className="flex flex-col gap-1 border-t border-[var(--border-subtle)]/60 pt-2 text-[11.5px] text-[var(--text-secondary)]">
+                  <div className="flex items-center gap-1.5 justify-between">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Parsed words:</span>
+                      <span className="text-[10px] text-[var(--text-muted)] font-normal italic">(click to bypass parsing)</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                    {parsedInfo.parsedPhrases.map((phrase, idx) => {
+                      return (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => handleToggleIgnorePhrase(phrase.text)}
+                          className={cn(
+                            "px-2 py-0.5 rounded-full border text-[11px] font-medium transition-all duration-150 cursor-pointer select-none flex items-center gap-1 shadow-sm",
+                            phrase.ignored
+                              ? "bg-zinc-850/40 border-zinc-800 text-zinc-500 line-through decoration-zinc-600 opacity-65 hover:opacity-100 hover:bg-zinc-800 hover:text-zinc-400"
+                              : cn(
+                                  phrase.type === 'date' && "bg-purple-500/10 hover:bg-purple-500/15 border-purple-500/20 hover:border-purple-500/40 text-purple-400",
+                                  phrase.type === 'priority' && "bg-amber-500/5 hover:bg-amber-500/15 border-amber-500/20 hover:border-amber-500/40 text-amber-400",
+                                  phrase.type === 'project' && "bg-indigo-500/5 hover:bg-indigo-500/15 border-indigo-500/20 hover:border-indigo-500/40 text-indigo-400"
+                                )
+                          )}
+                          title={phrase.ignored ? `Interpret "${phrase.text}"` : `Ignore "${phrase.text}"`}
+                        >
+                          <span>
+                            {phrase.type === 'project' ? '@' : phrase.type === 'priority' ? '⚡' : '📅'}
+                          </span>
+                          <span>{phrase.text}</span>
+                          {phrase.ignored ? (
+                            <span className="text-[9px] font-normal text-zinc-500 bg-zinc-900 border border-zinc-800/50 px-1 py-0.2 rounded ml-0.5">literal</span>
+                          ) : (
+                            <span className="text-[9px] font-normal text-zinc-300 bg-zinc-850 border border-zinc-800/30 px-1 py-0.2 rounded ml-0.5">parsed</span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Collapsible Manual Edit Form */}
               <AnimatePresence>

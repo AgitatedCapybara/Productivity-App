@@ -67,6 +67,8 @@ const api = {
     ipcRenderer.invoke('focus-session:updateReflection', { sessionId, reflection, clarityRating, energyRating }),
   renameSession: (sessionId: string, customName: string) => 
     ipcRenderer.invoke('focus-session:rename', { sessionId, customName }),
+  updateSessionTask: (sessionId: string, taskId: string | null) =>
+    ipcRenderer.invoke('focus-session:updateTask', { sessionId, taskId }),
   onSessionDistractionUpdate: (callback: (count: number) => void) => {
     const handler = (_: any, count: number) => callback(count)
     ipcRenderer.on('session:distraction-update', handler)

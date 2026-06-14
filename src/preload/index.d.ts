@@ -30,6 +30,7 @@ export interface IElectronAPI extends BaseIElectronAPI {
   deleteSession: (id: string) => Promise<void>;
   clearSessionHistory: () => Promise<void>;
   renameSession: (sessionId: string, customName: string) => Promise<void>;
+  updateSessionTask: (sessionId: string, taskId: string | null) => Promise<void>;
   onSessionDistractionUpdate: (callback: (count: number) => void) => () => void;
   onSessionDebugCheckTick: (callback: (count: number, isSimulated: boolean) => void) => () => void;
   onSessionStateChanged: (callback: () => void) => () => void;
@@ -48,6 +49,8 @@ export interface IWidgetAPI {
   stopSession: () => Promise<{ sessionId: string; taskId: string; durationMins: number; distractionCount: number }>;
   getTasksForToday: () => Promise<any[]>;
   completeTask: (id: string) => Promise<any>;
+  updateSessionTask: (sessionId: string, taskId: string | null) => Promise<void>;
+  setWidgetHeight: (height: number) => Promise<void>;
   onSessionTick: (callback: (elapsed: { seconds: number; distractionCount: number; targetDurationMins?: number }) => void) => () => void;
   onSessionStopped: (callback: (summary: { durationMins: number; distractionCount: number }) => void) => () => void;
   onSessionStateChanged: (callback: () => void) => () => void;
