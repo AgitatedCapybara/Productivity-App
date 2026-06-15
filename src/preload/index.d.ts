@@ -40,6 +40,8 @@ export interface IElectronAPI extends BaseIElectronAPI {
   getOverlayDiagnostics: () => Promise<any>;
   forceShowWidget: () => Promise<{ success: boolean; message: string }>;
   forceHideWidget: () => Promise<{ success: boolean; message: string }>;
+  confirmExit: () => Promise<void>;
+  onCloseRequested: (callback: () => void) => () => void;
 }
 
 export interface IWidgetAPI {

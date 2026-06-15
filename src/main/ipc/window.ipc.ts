@@ -1,5 +1,5 @@
-import { ipcMain, BrowserWindow } from 'electron'
-import { getActiveSession } from '../db/sessions'
+import { ipcMain, BrowserWindow, app } from 'electron'
+import { getActiveSession, endSession } from '../db/sessions'
 import { getSyncLogs, syncWidgetVisibility, setForceShowOverride } from '../windows/widget-window'
 
 export function registerWindowHandlers(mainWindow: BrowserWindow) {
@@ -44,6 +44,60 @@ export function registerWindowHandlers(mainWindow: BrowserWindow) {
     } else {
       mainWindow.close()
     }
+  })
+
+  ipcMain.handle('window:confirm-exit', async () => {
+    // 1. Stop any active focus session cleanest way
+    try {
+      const active = getActiveSession()
+      if (active) {
+        // Stop tracker/monitoring
+        try {
+          const { stopMonitoring } = require('../services/distraction-monitor')
+          stopMonitoring()
+        } catch (_) {}
+
+        // End session in DB (calculates and updates duration to DB)
+        endSession(active.id)
+        
+        // Write time to task if a task is assigned and duration > 0
+        try {
+          const { getDb } = require('../db/database')
+          const db = getDb()
+          const sessionInDb = db.prepare('SELECT * FROM sessions WHERE id = ?').get(active.id)
+          if (sessionInDb && sessionInDb.task_id && sessionInDb.duration_mins > 0) {
+            const { writeTimeToTask } = require('../db/tasks')
+            writeTimeToTask(sessionInDb.task_id, sessionInDb.duration_mins)
+          }
+        } catch (dbErr) {
+          console.error('[CONFIRM EXIT] DB save error', dbErr)
+        }
+      }
+    } catch (err) {
+      console.error('[CONFIRM EXIT] Error stopping active session on close', err)
+    }
+
+    // 2. Shut down tracker if active and not already closed
+    try {
+      const { stopMonitoring } = require('../services/distraction-monitor')
+      stopMonitoring()
+    } catch (_) {}
+
+    // 3. Destroy tray to prevent background ghost process
+    try {
+      const { tray } = require('../index')
+      if (tray) {
+        tray.destroy()
+      }
+    } catch (_) {}
+
+    // 4. Force exit the app immediately by destroying all windows
+    const windows = BrowserWindow.getAllWindows()
+    for (const win of windows) {
+      win.destroy()
+    }
+
+    app.quit()
   })
 
   ipcMain.handle('window:getOverlayDiagnostics', () => {

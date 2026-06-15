@@ -7,6 +7,47 @@
     <title>Productivity App</title>
     <script>
       window.process = window.process || { env: {} };
+      window.addEventListener('error', function(event) {
+        const errorDiv = document.createElement('div');
+        errorDiv.style.position = 'fixed';
+        errorDiv.style.inset = '10px';
+        errorDiv.style.background = 'rgba(220, 38, 38, 0.98)';
+        errorDiv.style.color = '#ffffff';
+        errorDiv.style.padding = '24px';
+        errorDiv.style.zIndex = '999999';
+        errorDiv.style.overflow = 'auto';
+        errorDiv.style.fontFamily = 'monospace';
+        errorDiv.style.fontSize = '12px';
+        errorDiv.style.lineHeight = '1.6';
+        errorDiv.style.borderRadius = '12px';
+        errorDiv.style.boxShadow = '0 25px 50px -12px rgba(0,0,0,0.5)';
+        errorDiv.innerHTML = '<h2 style="font-size: 16px; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px;">Uncaught Runtime Error</h2>' +
+          '<p><strong>Message:</strong> ' + event.message + '</p>' +
+          '<p><strong>Filename:</strong> ' + event.filename + '</p>' +
+          '<p><strong>Line:</strong> ' + event.lineno + ':' + event.colno + '</p>' +
+          '<p><strong>Stack:</strong></p><pre style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: 6px; overflow-x: auto;">' + (event.error ? event.error.stack : 'N/A') + '</pre>';
+        document.body.appendChild(errorDiv);
+      });
+      window.addEventListener('unhandledrejection', function(event) {
+        const errorDiv = document.createElement('div');
+        errorDiv.style.position = 'fixed';
+        errorDiv.style.inset = '10px';
+        errorDiv.style.background = 'rgba(217, 119, 6, 0.98)';
+        errorDiv.style.color = '#ffffff';
+        errorDiv.style.padding = '24px';
+        errorDiv.style.zIndex = '999999';
+        errorDiv.style.overflow = 'auto';
+        errorDiv.style.fontFamily = 'monospace';
+        errorDiv.style.fontSize = '12px';
+        errorDiv.style.lineHeight = '1.6';
+        errorDiv.style.borderRadius = '12px';
+        errorDiv.style.boxShadow = '0 25px 50px -12px rgba(0,0,0,0.5)';
+        const reason = event.reason || {};
+        errorDiv.innerHTML = '<h2 style="font-size: 16px; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 8px;">Unhandled Promise Rejection</h2>' +
+          '<p><strong>Reason:</strong> ' + (reason.message || reason) + '</p>' +
+          '<p><strong>Stack:</strong></p><pre style="background: rgba(0,0,0,0.25); padding: 12px; border-radius: 6px; overflow-x: auto;">' + (reason.stack || 'N/A') + '</pre>';
+        document.body.appendChild(errorDiv);
+      });
     </script>
   </head>
   <body class="bg-transparent text-white dark">

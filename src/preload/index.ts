@@ -35,6 +35,13 @@ const api = {
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
   toggleFullscreen: () => ipcRenderer.invoke('window:toggleFullscreen'),
   closeWindow: () => ipcRenderer.invoke('window:close'),
+  confirmExit: () => ipcRenderer.invoke('window:confirm-exit'),
+  
+  onCloseRequested: (cb: () => void) => {
+    const handler = () => cb()
+    ipcRenderer.on('window:close-request', handler)
+    return () => ipcRenderer.removeListener('window:close-request', handler)
+  },
   
   onGlobalShortcutTriggered: (cb: () => void) => {
     const handler = () => cb()

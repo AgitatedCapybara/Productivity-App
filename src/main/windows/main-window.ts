@@ -10,6 +10,7 @@ let trayRef: Tray | null = null
 
 export function setTrayRef(t: Tray | null) {
   trayRef = t
+  void trayRef
 }
 
 export function createMainWindow(): BrowserWindow {
@@ -45,10 +46,8 @@ export function createMainWindow(): BrowserWindow {
   })
 
   win.on('close', (e) => {
-    if (trayRef) {
-      e.preventDefault()
-      win.hide()
-    }
+    e.preventDefault()
+    win.webContents.send('window:close-request')
   })
 
   if (process.env.ELECTRON_RENDERER_URL) {

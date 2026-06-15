@@ -122,6 +122,8 @@ export interface IElectronAPI {
   maximizeWindow: () => Promise<void>
   toggleFullscreen: () => Promise<void>
   closeWindow: () => Promise<void>
+  confirmExit?: () => Promise<void>
+  onCloseRequested?: (cb: () => void) => () => void
   restoreMainWindow?: () => Promise<void>
   startSession?: (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }) => Promise<Session>
   pauseSession?: () => Promise<void>
