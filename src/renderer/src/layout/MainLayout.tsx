@@ -6,14 +6,21 @@ import { ProjectView } from '../pages/ProjectView'
 import { FocusWorkspaceView } from '../pages/FocusWorkspaceView'
 import { SettingsView } from '../pages/SettingsView'
 import { AnalyticsView } from './AnalyticsView'
+import { HabitsView } from '../pages/HabitsView'
+import { CalendarView } from '../pages/CalendarView'
+import { CirclePage } from '../pages/Circle/CirclePage'
 import { PostSessionOverview } from '../components/tasks/PostSessionOverview'
 import { useAppStore } from '../store/useAppStore'
 import { useTasks } from '../hooks/useTasks'
-import { Trash2, X } from 'lucide-react'
+import { useHabits } from '../hooks/useHabits'
+import { useProjects } from '../hooks/useProjects'
+import { Trash2, X, Sparkles, Flame, Check } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
+import { cn } from '../lib/utils'
 
 export function MainLayout() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
+  const [isConfirmingBulk, setIsConfirmingBulk] = useState(false)
   const activeView = useAppStore(state => state.activeView)
   const selectedTaskIds = useAppStore(state => state.selectedTaskIds)
   const setSelectedTaskIds = useAppStore(state => state.setSelectedTaskIds)
@@ -25,9 +32,29 @@ export function MainLayout() {
   const setSessionDistractionCount = useAppStore(state => state.setSessionDistractionCount)
   const recentFocusSummary = useAppStore(state => state.recentFocusSummary)
   const setRecentFocusSummary = useAppStore(state => state.setRecentFocusSummary)
+  const pageScales = useAppStore(state => state.pageScales)
+  const setPageScales = useAppStore(state => state.setPageScales)
+
+  useEffect(() => {
+    setIsConfirmingBulk(false)
+  }, [selectedTaskIds])
 
   useEffect(() => {
     if (!window.electronAPI) return
+
+    // Load persisted page scales from SQLite settings database
+    if (window.electronAPI.getSetting) {
+      window.electronAPI.getSetting('page-scales', '').then(val => {
+        if (val) {
+          try {
+            const parsed = JSON.parse(val)
+            setPageScales(parsed)
+          } catch (e) {
+            console.error('Failed to parse persisted page-scales config:', e)
+          }
+        }
+      }).catch(console.error)
+    }
 
     // 1. Initial State Load
     window.electronAPI.getActiveSession().then(session => {
@@ -95,8 +122,13 @@ export function MainLayout() {
   }, [])
 
   const handleBulkDelete = () => {
+    if (!isConfirmingBulk) {
+      setIsConfirmingBulk(true)
+      return
+    }
     selectedTaskIds.forEach(id => deleteTask(id))
     setSelectedTaskIds([])
+    setIsConfirmingBulk(false)
   }
 
   const renderView = () => {
@@ -105,22 +137,16 @@ export function MainLayout() {
         return <TodayView />
       case 'upcoming':
         return <UpcomingView />
+      case 'calendar':
+        return <CalendarView />
       case 'project':
         return <ProjectView />
       case 'habits':
-        return (
-          <div className="flex-1 flex items-center justify-center p-8 text-[var(--text-muted)] italic select-none text-xs sm:text-sm h-full" id="habits-coming-soon">
-            Habits · Coming in Phase 4
-          </div>
-        )
+        return <HabitsView />
       case 'analytics':
         return <AnalyticsView />
       case 'circle':
-        return (
-          <div className="flex-1 flex items-center justify-center p-8 text-[var(--text-muted)] italic select-none text-xs sm:text-sm h-full" id="circle-coming-soon">
-            Circle · Coming in Phase 6
-          </div>
-        )
+        return <CirclePage />
       case 'settings':
         return <SettingsView />
       default:
@@ -210,6 +236,10 @@ export function MainLayout() {
     )
   }
 
+  const currentScale = pageScales?.adjustAll
+    ? pageScales.globalScale
+    : (pageScales?.scales?.[activeView] ?? 1.0)
+
   return (
     <div className="flex w-screen h-screen overflow-hidden bg-[var(--bg-base)] text-[var(--text-primary)]">
       {/* Absolute top drag region for frameless window */}
@@ -220,7 +250,18 @@ export function MainLayout() {
       
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative h-full overflow-hidden">
-        {renderView()}
+        <div 
+          className="flex-1 flex flex-col min-h-0 w-full overflow-hidden" 
+          style={currentScale !== 1.0 ? { zoom: currentScale } : undefined}
+          id="scaled-page-wrapper"
+        >
+          {renderView()}
+        </div>
+
+        {/* Compact Habit Bar */}
+        {activeView !== 'habits' && (
+          <CompactHabitBar />
+        )}
 
         <AnimatePresence>
           {selectedTaskIds.length > 0 && (
@@ -235,11 +276,17 @@ export function MainLayout() {
               </span>
               <button 
                 onClick={handleBulkDelete}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+                onMouseLeave={() => setIsConfirmingBulk(false)}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 text-xs text-white rounded-lg transition-all border shrink-0",
+                  isConfirmingBulk 
+                    ? "bg-red-600 hover:bg-red-700 border-red-500 scale-102 font-semibold shadow-md" 
+                    : "bg-red-500 hover:bg-red-600 border-transparent"
+                )}
                 id="bulk-delete-btn"
               >
                 <Trash2 size={14} />
-                Delete
+                <span>{isConfirmingBulk ? 'Confirm Bulk Delete?' : 'Delete'}</span>
               </button>
               <button 
                 onClick={() => setSelectedTaskIds([])}
@@ -253,6 +300,86 @@ export function MainLayout() {
         </AnimatePresence>
       </main>
       {closeConfirmationDialog}
+    </div>
+  )
+}
+
+function CompactHabitBar() {
+  const { habits, logs, checkIn, uncheckIn } = useHabits()
+  const { projects } = useProjects()
+  const todayStr = new Date().toLocaleDateString('en-CA')
+
+  // Only show active habits in the compact bar (not paused)
+  const activeHabits = habits.filter(h => h.is_paused === 0)
+
+  if (activeHabits.length === 0) return null
+
+  return (
+    <div className="border-t border-[var(--border-default)] bg-zinc-950/80 backdrop-blur-md px-6 py-2.5 flex items-center justify-between gap-4 shrink-0 transition-all select-none" id="compact-habit-bar">
+      <div className="flex items-center gap-1.5 shrink-0 text-zinc-405">
+        <Sparkles size={13} className="text-purple-400 animate-pulse" />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Today's Habits:</span>
+      </div>
+
+      <div className="flex-1 flex items-center gap-4 overflow-x-auto scrollbar-none py-1">
+        {activeHabits.map((habit) => {
+          const isDone = logs.some(l => l.habit_id === habit.id && l.date === todayStr)
+          const mappedProject = projects.find(p => p.id === habit.project_id)
+
+          return (
+            <div 
+              key={habit.id} 
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all text-xs shrink-0 ${
+                isDone 
+                  ? 'bg-purple-950/20 border-purple-500/20 text-zinc-300'
+                  : 'bg-zinc-900/30 border-zinc-850 text-zinc-400 hover:border-zinc-800'
+              }`}
+              id={`compact-habit-item-${habit.id}`}
+            >
+              {/* Tap toggle trigger */}
+              <button
+                onClick={() => {
+                  if (isDone) {
+                    uncheckIn(habit.id, todayStr)
+                  } else {
+                    checkIn(habit.id, todayStr)
+                  }
+                }}
+                className={`w-4 h-4 rounded-md cursor-pointer transition-all flex items-center justify-center border ${
+                  isDone 
+                    ? 'bg-purple-600 border-purple-500 text-white shadow-sm' 
+                    : 'bg-zinc-950 border-zinc-800 hover:border-zinc-700'
+                }`}
+                title={isDone ? 'Checked! Click to undo' : 'Click to check in'}
+                id={`compact-check-${habit.id}`}
+              >
+                {isDone && <Check size={10} className="stroke-[3px]" />}
+              </button>
+
+              <span className={`font-semibold text-[11px] leading-none ${isDone ? 'line-through opacity-50' : ''}`}>
+                {habit.name}
+              </span>
+
+              {/* Project tiny dot indicator */}
+              {mappedProject && (
+                <span 
+                  className="w-1.5 h-1.5 rounded-full shrink-0" 
+                  style={{ backgroundColor: mappedProject.color }} 
+                  title={`Project: ${mappedProject.name}`}
+                />
+              )}
+
+              {/* Flame active streak */}
+              {habit.current_streak > 0 && (
+                <span className="flex items-center text-[10px] text-orange-400 font-bold ml-0.5" title={`${habit.current_streak} days streak!`}>
+                  <Flame size={11} className="fill-orange-400/10 shrink-0" />
+                  <span>{habit.current_streak}</span>
+                </span>
+              )}
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

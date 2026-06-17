@@ -118,7 +118,15 @@ export function SessionQuickStart() {
                         borderWidth: '1px'
                       }}
                     >
-                      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: project.color }} />
+                      {project.icon && project.icon.startsWith('data:image/') ? (
+                        <img 
+                          src={project.icon} 
+                          alt={project.name}
+                          className="w-3.5 h-3.5 rounded-full object-cover border border-[var(--border-subtle)]"
+                        />
+                      ) : (
+                        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: project.color }} />
+                      )}
                       <span>{project.name}</span>
                       {isSelected && <Check size={10} className="ml-1" style={{ color: project.color }} />}
                     </button>

@@ -32,9 +32,18 @@ function ProjectChip({ tag }: { tag: string }) {
   const project = projects.find(p => p.name.toLowerCase() === tag.toLowerCase())
 
   if (project) {
+    const isImg = project.icon && project.icon.startsWith('data:image/')
     return (
       <div className="flex items-center gap-1.5 px-1.5 py-[2px] rounded border border-[var(--border-default)] bg-[var(--bg-surface)] shadow-sm text-[11px] font-medium text-[var(--text-primary)]">
-        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: project.color }} />
+        {isImg ? (
+          <img 
+            src={project.icon} 
+            alt={project.name}
+            className="w-3.5 h-3.5 rounded-full object-cover border border-[var(--border-subtle)]"
+          />
+        ) : (
+          <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: project.color }} />
+        )}
         <span>{project.name}</span>
       </div>
     )

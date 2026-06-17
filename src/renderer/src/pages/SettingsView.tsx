@@ -1,6 +1,7 @@
 // src/renderer/src/pages/SettingsView.tsx
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, RotateCcw, Info, Check, ShieldAlert, Laptop, Eye } from 'lucide-react'
+import { Plus, Trash2, RotateCcw, Info, Check, ShieldAlert, Laptop, Sliders } from 'lucide-react'
+import { useAppStore } from '../store/useAppStore'
 
 const DEFAULT_PRESETS = [
   'chrome',
@@ -21,14 +22,13 @@ export function SettingsView() {
   const [newApp, setNewApp] = useState('')
   const [saved, setSaved] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [simulateActivity, setSimulateActivity] = useState(false)
+
+  const pageScales = useAppStore(state => state.pageScales)
+  const setSinglePageScale = useAppStore(state => state.setSinglePageScale)
+  const setAdjustAllScales = useAppStore(state => state.setAdjustAllScales)
 
   useEffect(() => {
     if (!window.electronAPI || !window.electronAPI.getSetting) return
-
-    window.electronAPI.getSetting('simulate-activity', 'false').then((val) => {
-      setSimulateActivity(val === 'true')
-    })
 
     window.electronAPI.getSetting(
       'distraction-apps',
@@ -53,19 +53,6 @@ export function SettingsView() {
       setTimeout(() => setSaved(false), 2000)
     } catch (err) {
       console.error('Failed to save settings:', err)
-    }
-  }
-
-  const handleToggleSimulateActivity = async () => {
-    if (!window.electronAPI || !window.electronAPI.setSetting) return
-    const nextVal = !simulateActivity
-    setSimulateActivity(nextVal)
-    try {
-      await window.electronAPI.setSetting('simulate-activity', nextVal ? 'true' : 'false')
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch (err) {
-      console.error('Failed to save simulation setting:', err)
     }
   }
 
@@ -174,7 +161,7 @@ export function SettingsView() {
                 value={newApp}
                 onChange={(e) => setNewApp(e.target.value)}
                 placeholder="Add custom app executable (e.g. chrome, steam, xbox)"
-                className="flex-1 bg-zinc-900/40 border border-zinc-900 hover:border-zinc-800 focus:border-indigo-500 text-xs px-3 py-2 rounded-xl text-zinc-200 placeholder-zinc-500 font-sans outline-none transition-colors"
+                className="flex-1 bg-zinc-900/40 border border-zinc-900 hover:border-zinc-800 focus:border-indigo-500 text-xs px-3 py-2 rounded-xl text-zinc-200 placeholder:text-zinc-600 font-sans outline-none transition-colors"
               />
               <button
                 type="submit"
@@ -222,6 +209,196 @@ export function SettingsView() {
               </button>
             </div>
           </div>
+
+          {/* Custom Page Scaling Settings */}
+          <div className="bg-zinc-950/20 border border-zinc-900 rounded-2xl p-5 space-y-5" id="page-scaling-settings-card">
+            <header className="flex items-center justify-between border-b border-zinc-900/60 pb-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <Sliders className="w-3.5 h-3.5 text-indigo-400" />
+                Custom Page Interface Scaling
+              </h3>
+              <p className="text-[10px] text-zinc-500 font-mono">
+                Real-time layout zoom adjustment
+              </p>
+            </header>
+
+            <div className="space-y-4">
+              {/* Option to Adjust All Pages together vs Specfic Pages */}
+              <div className="bg-zinc-900/10 border border-zinc-950 p-4 rounded-xl space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-0.5">
+                    <label className="text-xs font-bold text-zinc-200 block">
+                      Global &ldquo;Adjust All&rdquo; Option
+                    </label>
+                    <p className="text-[10.5px] text-zinc-500 leading-normal max-w-md font-sans">
+                      Force every screen a singular zoom ratio. Turn this off to customize scaling page-by-page.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextAdjustAll = !pageScales.adjustAll
+                      setAdjustAllScales(nextAdjustAll, pageScales.globalScale)
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold border transition-all cursor-pointer select-none ${
+                      pageScales.adjustAll
+                        ? 'bg-indigo-500/10 border-indigo-500/25 text-indigo-400'
+                        : 'bg-zinc-900/30 border-zinc-900 text-zinc-400 hover:text-zinc-350'
+                    }`}
+                    id="adjust-all-toggle-btn"
+                  >
+                    {pageScales.adjustAll ? 'ADJUST ALL: ON' : 'INDIVIDUAL MODE'}
+                  </button>
+                </div>
+
+                {/* Adjust All Active scale parameters */}
+                {pageScales.adjustAll && (
+                  <div className="pt-3.5 border-t border-zinc-900/55 space-y-4" id="adjust-all-controls">
+                    {/* Preset Scale values row */}
+                    <div className="space-y-2">
+                      <span className="text-[10px] font-semibold uppercase text-zinc-550 block font-sans">Preset Scale Amounts</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[0.8, 0.9, 1.0, 1.1, 1.15, 1.25, 1.35, 1.5].map((preset) => (
+                          <button
+                            key={`preset-global-${preset}`}
+                            type="button"
+                            onClick={() => setAdjustAllScales(true, preset)}
+                            className={`text-[10px] px-2.5 py-1 rounded-lg font-mono transition-all border cursor-pointer select-none ${
+                              pageScales.globalScale === preset
+                                ? 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30 font-bold'
+                                : 'bg-zinc-950/40 text-zinc-400 border-zinc-900 hover:border-zinc-800'
+                            }`}
+                          >
+                            {Math.round(preset * 100)}%
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Custom Scale slider & input box */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-center pt-1">
+                      <div className="sm:col-span-2 space-y-1.5">
+                        <div className="flex justify-between text-[10px] font-mono text-zinc-500 select-none">
+                          <span>50% (Small)</span>
+                          <span>100% (Native)</span>
+                          <span>200% (Large)</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.5"
+                          max="2.0"
+                          step="0.05"
+                          value={pageScales.globalScale}
+                          onChange={(e) => setAdjustAllScales(true, parseFloat(e.target.value))}
+                          className="w-full accent-indigo-500 bg-zinc-900 h-1 rounded-lg cursor-pointer"
+                        />
+                      </div>
+                      <div className="bg-zinc-950/60 p-3 rounded-xl border border-zinc-900 text-center space-y-1">
+                        <span className="text-[9px] font-semibold text-zinc-500 uppercase tracking-widest block font-sans">Unified Zoom</span>
+                        <div className="flex items-center justify-center gap-1">
+                          <input
+                            type="number"
+                            min="50"
+                            max="200"
+                            value={Math.round(pageScales.globalScale * 100)}
+                            onChange={(e) => {
+                              const pct = parseInt(e.target.value) || 100
+                              const val = Math.min(Math.max(pct, 50), 200) / 100
+                              setAdjustAllScales(true, val)
+                            }}
+                            className="bg-zinc-900 border border-zinc-850 px-2 py-0.5 rounded text-xs font-mono font-bold text-center w-14 text-zinc-200 outline-none focus:border-indigo-500"
+                          />
+                          <span className="text-xs font-mono text-zinc-400">%</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Individual Page Customization */}
+              {!pageScales.adjustAll && (
+                <div className="space-y-3.5" id="individual-scaling-controls">
+                  <div className="space-y-0.5">
+                    <h4 className="text-xs font-bold text-zinc-205 text-zinc-200">
+                      Configure Specific Screens
+                    </h4>
+                    <p className="text-[10.5px] text-zinc-550 text-zinc-500 leading-normal font-sans">
+                      Adjust independent zoom overrides depending on layout complexity. Set lower values (e.g. 85%) for statistics/charts grids, or higher for reading ease.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      { key: 'today', name: '📋 Today View' },
+                      { key: 'upcoming', name: '📅 Upcoming View' },
+                      { key: 'calendar', name: '📆 Calendar View' },
+                      { key: 'project', name: '📁 Project View' },
+                      { key: 'habits', name: '🌱 Habits View' },
+                      { key: 'analytics', name: '📈 Analytics View' },
+                      { key: 'circle', name: '🌐 Circle Hub' },
+                      { key: 'settings', name: '⚙️ Settings View' }
+                    ].map((page) => {
+                      const currentVal = pageScales.scales?.[page.key] ?? 1.0
+                      return (
+                        <div key={page.key} className="bg-zinc-950/40 border border-zinc-900/60 p-3 rounded-xl flex items-center justify-between gap-3 text-xs">
+                          <div className="space-y-1.5 truncate flex-1 pr-1">
+                            <span className="font-semibold text-zinc-350 block truncate font-sans">{page.name}</span>
+                            <div className="flex flex-wrap gap-1">
+                              {[0.8, 1.0, 1.2].map((pVal) => (
+                                <button
+                                  key={`${page.key}-preset-${pVal}`}
+                                  type="button"
+                                  onClick={() => setSinglePageScale(page.key, pVal)}
+                                  className={`text-[8.5px] font-semibold px-1 py-0.5 rounded font-mono border cursor-pointer select-none ${
+                                    currentVal === pVal
+                                      ? 'bg-zinc-800 text-indigo-400 border-indigo-500/20'
+                                      : 'bg-zinc-900/50 text-zinc-550 border-zinc-900 hover:text-zinc-400'
+                                  }`}
+                                >
+                                  {Math.round(pVal * 100)}%
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                          
+                          {/* Scale input controls */}
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextVal = Math.max(0.5, parseFloat((currentVal - 0.05).toFixed(2)))
+                                setSinglePageScale(page.key, nextVal)
+                              }}
+                              className="w-5 h-5 bg-zinc-900 border border-zinc-850 text-zinc-405 text-zinc-400 hover:bg-zinc-800 hover:text-white rounded flex items-center justify-center font-bold text-xs select-none cursor-pointer"
+                            >
+                              -
+                            </button>
+                            <div className="flex items-center justify-center bg-zinc-900/40 border border-zinc-850 px-1.5 py-0.5 rounded gap-0.5 w-12 text-center select-none">
+                              <span className="font-mono text-[10.5px] font-bold text-zinc-300">
+                                {Math.round(currentVal * 100)}
+                              </span>
+                              <span className="text-[9px] text-zinc-550 text-zinc-500 font-mono">%</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextVal = Math.min(2.0, parseFloat((currentVal + 0.05).toFixed(2)))
+                                setSinglePageScale(page.key, nextVal)
+                              }}
+                              className="w-5 h-5 bg-zinc-900 border border-zinc-850 text-zinc-405 text-zinc-400 hover:bg-zinc-800 hover:text-white rounded flex items-center justify-center font-bold text-xs select-none cursor-pointer"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Informational Panel */}
@@ -248,40 +425,6 @@ export function SettingsView() {
                 Workspaces and terminal/editor frame shifts (like VS Code, GitBash, Echoes itself) are fully whitelisted as native productive time.
               </p>
             </div>
-          </div>
-
-          <div className="bg-amber-500/[0.02] border border-amber-500/15 rounded-2xl p-4 space-y-3 text-xs">
-            <h4 className="font-semibold text-amber-400 flex items-center justify-between gap-1.5">
-              <span className="flex items-center gap-1.5">
-                <Eye className="w-3.5 h-3.5 text-amber-500" />
-                Web Preview Simulation
-              </span>
-              <span className="text-[10px] font-mono bg-amber-500/5 px-2 py-0.5 rounded border border-amber-500/10">
-                ACTIVE
-              </span>
-            </h4>
-            <p className="text-zinc-350 leading-relaxed text-[11px] font-sans">
-              Since this app is currently previewed inside a <strong>remotely sandboxed cloud container</strong>, native OS APIs cannot view your personal physical screen or monitor your open apps like <strong>Brave</strong> or <strong>VS Code</strong>. 
-            </p>
-            <p className="text-zinc-400 leading-normal text-[11px] font-sans">
-              To fully demonstrate how tracking works, the sandbox runs simulated ticks mirroring active workspaces and common distractions. You can pause these simulated swaps to test clean focused states:
-            </p>
-
-            <button
-              onClick={handleToggleSimulateActivity}
-              className={`w-full py-2 px-3 rounded-xl border font-mono text-[11px] transition-all flex items-center justify-center gap-2 cursor-pointer ${
-                simulateActivity
-                  ? 'bg-amber-500/10 hover:bg-amber-500/15 text-amber-400 border-amber-500/25'
-                  : 'bg-zinc-900/40 hover:bg-zinc-800 text-zinc-400 border-zinc-850'
-              }`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${simulateActivity ? 'bg-amber-500 animate-pulse' : 'bg-zinc-500'}`} />
-              {simulateActivity ? 'PAUSE BACKGROUND MOCK SWAPS' : 'RESUME BACKGROUND MOCK SWAPS'}
-            </button>
-
-            <span className="text-[10.5px] text-zinc-500 block leading-normal italic font-sans pt-1 border-t border-zinc-900/50">
-              *Your local Electron desktop build will ignore this simulation entirely and run real hardware polls natively!
-            </span>
           </div>
         </div>
       </div>

@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
-import { CheckSquare, CalendarDays, Flame, Users, Settings, BarChart3 } from 'lucide-react'
+import { CheckSquare, CalendarDays, Calendar, Flame, Users, Settings, BarChart3, FolderKanban } from 'lucide-react'
 import { useAppStore } from '../store/useAppStore'
 import { cn } from '../lib/utils'
 import { View } from '../types'
+import { ProjectEditModal } from '../components/projects/ProjectEditModal'
 
 export function Sidebar() {
   const { activeView, setActiveView, projects, selectedProjectId, setSelectedProject, tasks } = useAppStore()
+  
+  const [projectModalOpen, setProjectModalOpen] = useState(false)
+  const [modalInitialId, setModalInitialId] = useState<string | null>(null)
   
   const [lastViewedUpcoming, setLastViewedUpcoming] = useState<number>(() => {
     const stored = localStorage.getItem('last_viewed_upcoming')
@@ -88,6 +92,7 @@ export function Sidebar() {
   const navItems: { id: View, icon: any }[] = [
     { id: 'today', icon: CheckSquare },
     { id: 'upcoming', icon: CalendarDays },
+    { id: 'calendar', icon: Calendar },
     { id: 'habits', icon: Flame },
     { id: 'analytics', icon: BarChart3 },
     { id: 'circle', icon: Users },
@@ -141,6 +146,7 @@ export function Sidebar() {
         <div className="w-full flex flex-col items-center gap-2 mt-4 pt-4 border-t border-[var(--border-subtle)]">
           {projects.map((project) => {
             const isActive = activeView === 'project' && selectedProjectId === project.id
+            const isImg = project.icon && project.icon.startsWith('data:image/')
             return (
               <button
                 key={project.id}
@@ -151,13 +157,25 @@ export function Sidebar() {
                 )}
                 title={project.name}
               >
-                <div 
-                  className={cn(
-                    "w-2.5 h-2.5 rounded-full transition-transform",
-                    isActive ? "scale-110" : ""
-                  )} 
-                  style={{ backgroundColor: project.color }} 
-                />
+                {isImg ? (
+                  <img 
+                    src={project.icon} 
+                    alt={project.name}
+                    className={cn(
+                      "w-4 h-4 rounded-full object-cover border border-[var(--border-subtle)] transition-transform",
+                      isActive ? "scale-110" : "opacity-80 group-hover:opacity-100"
+                    )}
+                  />
+                ) : (
+                  <div 
+                    className={cn(
+                      "w-2.5 h-2.5 rounded-full transition-transform",
+                      isActive ? "scale-110" : ""
+                    )} 
+                    style={{ backgroundColor: project.color }} 
+                  />
+                )}
+                
                 {isActive && (
                   <div 
                     className="absolute -left-[8px] top-1/2 -translate-y-1/2 w-1 h-4 rounded-r-md rounded-l-none opacity-100" 
@@ -167,6 +185,20 @@ export function Sidebar() {
               </button>
             )
           })}
+
+          {/* Plus and Manage Buttons */}
+          <div className="flex flex-col items-center gap-1 mt-2.5 pt-2.5 border-t border-zinc-900/60 w-full no-drag">
+            <button
+              onClick={() => {
+                setModalInitialId(null)
+                setProjectModalOpen(true)
+              }}
+              className="w-7 h-7 rounded-lg hover:bg-[var(--bg-hover)] text-zinc-500 hover:text-[var(--text-primary)] transition-colors flex items-center justify-center cursor-pointer"
+              title="Manage projects"
+            >
+              <FolderKanban size={13} />
+            </button>
+          </div>
         </div>
       </nav>
 
@@ -188,6 +220,13 @@ export function Sidebar() {
           />
         </button>
       </div>
+
+      {/* Project Manager Modal */}
+      <ProjectEditModal 
+        isOpen={projectModalOpen} 
+        onClose={() => setProjectModalOpen(false)} 
+        initialEditProjectId={modalInitialId} 
+      />
     </div>
   )
 }

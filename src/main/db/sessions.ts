@@ -2,6 +2,7 @@
 import { getDb } from './database'
 import { nanoid } from 'nanoid'
 import type { Session, Distraction } from './schema'
+import { completeLinkedSessionHabits } from './habits'
 
 export interface SessionWithDistractions extends Session {
   distractions: Distraction[]
@@ -53,6 +54,13 @@ export function endSession(sessionId: string): void {
     ended_at: endedAt,
     duration_mins: durationMins
   })
+
+  // Completes any linked active habits
+  try {
+    completeLinkedSessionHabits(session.project_id)
+  } catch (err) {
+    console.error('Failed to trigger completeLinkedSessionHabits:', err)
+  }
 }
 
 export function pauseSession(sessionId: string): void {

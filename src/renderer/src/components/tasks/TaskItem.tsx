@@ -136,10 +136,16 @@ export const TaskItem = React.memo(function TaskItem({
         <button
           onClick={() => onComplete?.(task.id)}
           className={cn(
-            "w-4 h-4 rounded-full border flex flex-shrink-0 items-center justify-center ml-1 mr-3 transition-colors",
+            "w-4 h-4 rounded-full border flex flex-shrink-0 items-center justify-center ml-1 mr-3 transition-colors cursor-pointer",
             task.status === 'done'
               ? "bg-[var(--color-success)] border-[var(--color-success)] text-white"
-              : "border-[var(--border-default)] hover:border-[var(--accent-primary)] text-transparent"
+              : task.priority === 3
+                ? "border-indigo-500/90 bg-indigo-500/10 hover:border-indigo-400 hover:bg-indigo-500/20 text-transparent"
+                : task.priority === 2
+                  ? "border-amber-500/90 bg-amber-500/10 hover:border-amber-400 hover:bg-amber-500/20 text-transparent"
+                  : task.priority === 1
+                    ? "border-zinc-500 bg-zinc-500/10 hover:border-zinc-400 hover:bg-zinc-500/20 text-transparent"
+                    : "border-zinc-700 hover:border-zinc-400 bg-transparent text-transparent"
           )}
         >
           <Check size={10} strokeWidth={3} className={task.status === 'done' ? "block" : "hidden"} />
@@ -234,7 +240,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {task.project_id && task.project_id !== 'inbox-default' && (
                <span className="flex-shrink-0 flex items-center gap-1 text-[10px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-1.5 py-0.5 rounded border border-[var(--border-default)]">
-                 <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: projects.find(p => p.id === task.project_id)?.color || '#888' }} />
+                 {(() => { const proj = projects.find(p => p.id === task.project_id); return proj?.icon && proj.icon.startsWith('data:image/') ? <img src={proj.icon} alt={proj.name} className="w-3.5 h-3.5 rounded-full object-cover shrink-0 border border-zinc-800" /> : <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: proj?.color || '#888' }} /> })()}
                  {projects.find(p => p.id === task.project_id)?.name || 'Project'}
                </span>
             )}
@@ -272,6 +278,30 @@ export const TaskItem = React.memo(function TaskItem({
           className="w-6 h-6 flex flex-shrink-0 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-all mr-1"
         >
           <Play size={14} className="fill-current" />
+        </button>
+      )}
+
+      {task.status !== 'deleted' && (
+        <button 
+          onClick={(e) => {
+            e.stopPropagation()
+            if (!isConfirmingDelete) {
+              setIsConfirmingDelete(true)
+            } else {
+              onDelete?.(task.id)
+              setIsConfirmingDelete(false)
+            }
+          }}
+          onMouseLeave={() => setIsConfirmingDelete(false)}
+          className={cn(
+            "w-6 h-6 flex flex-shrink-0 items-center justify-center rounded-md mr-1 transition-all",
+            isConfirmingDelete 
+              ? "opacity-100 text-[var(--color-overdue)] bg-[var(--color-overdue)]/15 border border-[var(--color-overdue)]/30 scale-105 animate-pulse" 
+              : "opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--color-overdue)]"
+          )}
+          title={isConfirmingDelete ? "Click again to confirm delete" : "Delete task"}
+        >
+          <Trash2 size={13} className={cn("transition-all", isConfirmingDelete && "scale-105")} />
         </button>
       )}
 
@@ -339,7 +369,20 @@ export const TaskItem = React.memo(function TaskItem({
                   </DropdownMenuSubContent>
                 </DropdownMenuPortal>
               </DropdownMenuSub>
-              <DropdownMenuItem onClick={() => onDelete?.(task.id)} className="text-[var(--color-overdue)] focus:text-[var(--color-overdue)]">Delete</DropdownMenuItem>
+              <DropdownMenuItem 
+                onSelect={(e) => {
+                  e.preventDefault()
+                  if (!isConfirmingDelete) {
+                    setIsConfirmingDelete(true)
+                  } else {
+                    onDelete?.(task.id)
+                    setIsConfirmingDelete(false)
+                  }
+                }}
+                className="text-[var(--color-overdue)] focus:text-[var(--color-overdue)] font-semibold"
+              >
+                {isConfirmingDelete ? 'Confirm Delete?' : 'Delete'}
+              </DropdownMenuItem>
             </>
           )}
         </DropdownMenuContent>

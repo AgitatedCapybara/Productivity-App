@@ -155,4 +155,142 @@ export function runMigrations(db: Database): void {
     db.exec('PRAGMA user_version = 9')
     user_version = 9
   }
+
+  if (user_version < 10) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS habit_logs (
+        id TEXT PRIMARY KEY,
+        habit_id TEXT NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+        date TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(habit_id, date)
+      );
+    `)
+    try {
+      db.exec("ALTER TABLE habits ADD COLUMN project_id TEXT REFERENCES projects(id) ON DELETE SET NULL;")
+    } catch (e) {
+      // Ignored if column already exists
+    }
+    try {
+      db.exec("ALTER TABLE habits ADD COLUMN is_paused INTEGER NOT NULL DEFAULT 0;")
+    } catch (e) {
+      // Ignored if column already exists
+    }
+    try {
+      db.exec("ALTER TABLE habits ADD COLUMN session_link INTEGER NOT NULL DEFAULT 0;")
+    } catch (e) {
+      // Ignored if column already exists
+    }
+    db.exec('PRAGMA user_version = 10')
+    user_version = 10
+  }
+
+  if (user_version < 11) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS calendar_events (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        description TEXT,
+        start_at TEXT NOT NULL,
+        end_at TEXT NOT NULL,
+        project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+        recurrence TEXT NOT NULL DEFAULT 'none',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `)
+    db.exec('PRAGMA user_version = 11')
+    user_version = 11
+  }
+
+  if (user_version < 12) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS user_profile (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        avatar TEXT NOT NULL,
+        circle_sharing_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_user_profile_username ON user_profile(username);
+
+      CREATE TABLE IF NOT EXISTS friends (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        friend_username TEXT NOT NULL,
+        status TEXT NOT NULL, -- 'pending', 'accepted', 'declined'
+        requested_by TEXT NOT NULL, -- 'user', 'friend'
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(user_id, friend_username)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_friends_user_id_friend_username ON friends(user_id, friend_username);
+      CREATE INDEX IF NOT EXISTS idx_friends_status ON friends(status);
+
+      CREATE TABLE IF NOT EXISTS friend_stats_cache (
+        friend_username TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        avatar TEXT NOT NULL,
+        focus_minutes_today INTEGER NOT NULL,
+        tasks_completed_today INTEGER NOT NULL,
+        current_streak INTEGER NOT NULL,
+        is_focusing INTEGER NOT NULL,
+        last_synced_at INTEGER NOT NULL
+      );
+    `)
+    db.exec('PRAGMA user_version = 12')
+    user_version = 12
+  }
+
+  if (user_version < 13) {
+    // Add columns to user_profile table
+    try {
+      db.exec("ALTER TABLE user_profile ADD COLUMN description TEXT DEFAULT 'Focusing on building and shipping projects! 🚀';")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE user_profile ADD COLUMN custom_show_focus INTEGER DEFAULT 1;")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE user_profile ADD COLUMN custom_show_tasks INTEGER DEFAULT 1;")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE user_profile ADD COLUMN custom_show_streak INTEGER DEFAULT 1;")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE user_profile ADD COLUMN custom_show_timeline INTEGER DEFAULT 1;")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE user_profile ADD COLUMN custom_theme TEXT DEFAULT 'indigo';")
+    } catch (_) {}
+
+    // Add columns to friend_stats_cache table
+    try {
+      db.exec("ALTER TABLE friend_stats_cache ADD COLUMN description TEXT DEFAULT 'Solo developer grinding in deep focus sessions.';")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE friend_stats_cache ADD COLUMN custom_show_focus INTEGER DEFAULT 1;")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE friend_stats_cache ADD COLUMN custom_show_tasks INTEGER DEFAULT 1;")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE friend_stats_cache ADD COLUMN custom_show_streak INTEGER DEFAULT 1;")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE friend_stats_cache ADD COLUMN custom_show_timeline INTEGER DEFAULT 1;")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE friend_stats_cache ADD COLUMN custom_theme TEXT DEFAULT 'indigo';")
+    } catch (_) {}
+    try {
+      db.exec("ALTER TABLE friend_stats_cache ADD COLUMN focus_history_json TEXT DEFAULT '[]';")
+    } catch (_) {}
+
+    db.exec('PRAGMA user_version = 13')
+    user_version = 13
+  }
 }

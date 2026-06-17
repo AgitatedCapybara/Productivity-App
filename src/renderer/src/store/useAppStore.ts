@@ -47,6 +47,14 @@ export interface AppState {
   setError: (error: string | null) => void
   tasksRevision: number
   incrementTasksRevision: () => void
+  pageScales: {
+    adjustAll: boolean
+    globalScale: number
+    scales: Record<string, number>
+  }
+  setPageScales: (scales: { adjustAll: boolean; globalScale: number; scales: Record<string, number> }) => void
+  setSinglePageScale: (pageKey: string, scale: number) => void
+  setAdjustAllScales: (adjustAll: boolean, globalScale: number) => void
 }
 
 export const useAppStore = create<AppState>()(immer((set) => ({
@@ -68,14 +76,59 @@ export const useAppStore = create<AppState>()(immer((set) => ({
   isLoading: false,
   error: null,
   tasksRevision: 0,
+  pageScales: {
+    adjustAll: false,
+    globalScale: 1.0,
+    scales: {
+      today: 1.0,
+      upcoming: 1.0,
+      calendar: 1.0,
+      project: 1.0,
+      habits: 1.0,
+      analytics: 1.0,
+      circle: 1.0,
+      settings: 1.0
+    }
+  },
 
   incrementTasksRevision: () => set((state) => { state.tasksRevision += 1 }),
   setSelectedTaskIds: (ids) => set((state) => { state.selectedTaskIds = ids }),
   setLastSelectedTaskId: (id) => set((state) => { state.lastSelectedTaskId = id }),
+  setPageScales: (scales) => set((state) => {
+    state.pageScales = {
+      adjustAll: scales.adjustAll,
+      globalScale: scales.globalScale,
+      scales: {
+        today: scales.scales?.today ?? 1.0,
+        upcoming: scales.scales?.upcoming ?? 1.0,
+        calendar: scales.scales?.calendar ?? 1.0,
+        project: scales.scales?.project ?? 1.0,
+        habits: scales.scales?.habits ?? 1.0,
+        analytics: scales.scales?.analytics ?? 1.0,
+        circle: scales.scales?.circle ?? 1.0,
+        settings: scales.scales?.settings ?? 1.0
+      }
+    }
+  }),
+  setSinglePageScale: (pageKey, scale) => set((state) => {
+    state.pageScales.scales[pageKey] = scale
+    if (window.electronAPI && window.electronAPI.setSetting) {
+      window.electronAPI.setSetting('page-scales', JSON.stringify(state.pageScales)).catch(console.error)
+    }
+  }),
+  setAdjustAllScales: (adjustAll, globalScale) => set((state) => {
+    state.pageScales.adjustAll = adjustAll
+    state.pageScales.globalScale = globalScale
+    if (window.electronAPI && window.electronAPI.setSetting) {
+      window.electronAPI.setSetting('page-scales', JSON.stringify(state.pageScales)).catch(console.error)
+    }
+  }),
 
   setTasks: (tasks) => set((state) => {
-    // 1. Find all active temp tasks in current state
-    const tempTasks = state.tasks.filter(t => t.id.startsWith('temp-'))
+    // 1. Find all active temp tasks in current state (or ones with temp client_ids)
+    const tempTasks = state.tasks.filter(
+      (t) => t.id.startsWith('temp-') || (t.client_id && t.client_id.startsWith('temp-'))
+    )
     
     // 2. Map existing database IDs to their client_ids
     const existingMap = new Map(state.tasks.map(t => [t.id, t.client_id]))
@@ -93,7 +146,7 @@ export const useAppStore = create<AppState>()(immer((set) => ({
           pt.priority === t.priority
         )
         if (matchingTemp) {
-          clientId = matchingTemp.id
+          clientId = matchingTemp.client_id || matchingTemp.id
           // Remove from local list so we don't double-match
           const idx = tempTasks.indexOf(matchingTemp)
           if (idx !== -1) tempTasks.splice(idx, 1)
@@ -108,7 +161,9 @@ export const useAppStore = create<AppState>()(immer((set) => ({
 
     // 4. Any outstanding temp tasks that were not matched (still in-progress on backend)
     const loadedClientIds = new Set(loadedMapped.map(l => l.client_id))
-    const outstandingTemp = tempTasks.filter(pt => !loadedClientIds.has(pt.id))
+    const outstandingTemp = tempTasks.filter(
+      (pt) => !loadedClientIds.has(pt.id) && !(pt.client_id && loadedClientIds.has(pt.client_id))
+    )
 
     state.tasks = [...loadedMapped, ...outstandingTemp]
   }),

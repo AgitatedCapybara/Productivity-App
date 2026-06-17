@@ -64,12 +64,25 @@ export interface Habit {
   frequency: HabitFrequency
   current_streak: number
   longest_streak: number
+  project_id: string | null
+  is_paused: number // 0 or 1
+  session_link: number // 0 or 1
+  created_at: string
+}
+
+export interface HabitLog {
+  id: string
+  habit_id: string
+  date: string // YYYY-MM-DD
   created_at: string
 }
 
 export interface CreateHabitInput {
   name: string
   frequency: HabitFrequency
+  project_id?: string | null
+  is_paused?: number
+  session_link?: number
 }
 
 export type UpdateHabitInput = Partial<CreateHabitInput> & { id: string }
@@ -90,3 +103,27 @@ export interface CreateTaskInput {
 }
 
 export type UpdateTaskInput = Partial<CreateTaskInput> & { id: string }
+
+export interface CalendarEvent {
+  id: string
+  title: string
+  description: string | null
+  start_at: string // ISO Timestamp
+  end_at: string // ISO Timestamp
+  project_id: string | null
+  recurrence: string
+  created_at: string
+  updated_at: string
+}
+
+export interface CreateCalendarEventInput {
+  title: string
+  description?: string | null
+  start_at: string
+  end_at: string
+  project_id?: string | null
+  recurrence?: string
+}
+
+export type UpdateCalendarEventInput = Partial<CreateCalendarEventInput> & { id: string }
+

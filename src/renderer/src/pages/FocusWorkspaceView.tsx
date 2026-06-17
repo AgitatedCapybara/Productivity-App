@@ -681,7 +681,15 @@ export function FocusWorkspaceView() {
                       : "bg-zinc-900/40 hover:bg-zinc-900 border-zinc-900/50 text-zinc-400 hover:text-zinc-200"
                   )}
                 >
-                  <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: tab.color || '#fff' }} />
+                  {tab.icon && tab.icon.startsWith('data:image/') ? (
+                    <img 
+                      src={tab.icon} 
+                      alt={tab.name}
+                      className="w-3.5 h-3.5 rounded-full object-cover shrink-0 border border-zinc-800"
+                    />
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: tab.color || '#fff' }} />
+                  )}
                   <span>{tab.name}</span>
                   <span className={cn(
                     "text-[9px] font-mono px-1 rounded-full shrink-0",
@@ -719,10 +727,19 @@ export function FocusWorkspaceView() {
                             console.error(err)
                           }
                         }}
-                        className="w-4 h-4 rounded-full border border-zinc-800 hover:border-emerald-500 hover:bg-emerald-500/10 flex items-center justify-center shrink-0 transition-all cursor-pointer"
+                        className={cn(
+                          "w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all cursor-pointer",
+                          task.priority === 3
+                            ? "border-indigo-500/90 bg-indigo-500/10 hover:border-indigo-400 hover:bg-indigo-500/20"
+                            : task.priority === 2
+                              ? "border-amber-500/90 bg-amber-500/10 hover:border-amber-400 hover:bg-amber-500/20"
+                              : task.priority === 1
+                                ? "border-zinc-500 bg-zinc-500/10 hover:border-zinc-400 hover:bg-zinc-500/20"
+                                : "border-zinc-800 hover:border-emerald-500 hover:bg-emerald-500/10"
+                        )}
                         title="Complete task"
                       >
-                        <Check className="w-2.5 h-2.5 text-transparent group-hover:text-emerald-400 transition-colors" />
+                        <Check className="w-2.5 h-2.5 text-transparent group-hover:text-emerald-450 transition-colors" />
                       </button>
 
                       {/* Info & Title */}

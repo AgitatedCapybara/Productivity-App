@@ -30,6 +30,14 @@ const api = {
   createHabit: (input: any) => ipcRenderer.invoke('habits:create', input),
   updateHabit: (input: any) => ipcRenderer.invoke('habits:update', input),
   deleteHabit: (id: string) => ipcRenderer.invoke('habits:delete', id),
+  checkInHabit: (habitId: string, date: string) => ipcRenderer.invoke('habits:checkIn', { habitId, date }),
+  uncheckInHabit: (habitId: string, date: string) => ipcRenderer.invoke('habits:uncheckIn', { habitId, date }),
+  getHabitLogs: (habitId?: string) => ipcRenderer.invoke('habits:getLogs', { habitId }),
+  
+  getEvents: () => ipcRenderer.invoke('events:getAll'),
+  createEvent: (input: any) => ipcRenderer.invoke('events:create', input),
+  updateEvent: (input: any) => ipcRenderer.invoke('events:update', input),
+  deleteEvent: (id: string) => ipcRenderer.invoke('events:delete', id),
   
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   maximizeWindow: () => ipcRenderer.invoke('window:maximize'),
@@ -111,7 +119,23 @@ const api = {
   setSetting: (key: string, value: string) => ipcRenderer.invoke('settings:set', key, value),
   getOverlayDiagnostics: () => ipcRenderer.invoke('window:getOverlayDiagnostics'),
   forceShowWidget: () => ipcRenderer.invoke('window:forceShowWidget'),
-  forceHideWidget: () => ipcRenderer.invoke('window:forceHideWidget')
+  forceHideWidget: () => ipcRenderer.invoke('window:forceHideWidget'),
+
+  // Circle Feature APIs
+  getCircleProfile: () => ipcRenderer.invoke('circle:profile:get'),
+  createCircleProfile: (input: { username: string; displayName: string; avatar: string }) => ipcRenderer.invoke('circle:profile:create', input),
+  updateCircleProfile: (input: any) => ipcRenderer.invoke('circle:profile:update', input),
+  deleteCircleProfile: () => ipcRenderer.invoke('circle:profile:delete'),
+  toggleCircleSharing: (enabled: boolean) => ipcRenderer.invoke('circle:profile:toggle-sharing', enabled),
+  searchCircleUser: (searchQuery: string) => ipcRenderer.invoke('circle:friends:search', searchQuery),
+  sendCircleFriendRequest: (friendUsername: string) => ipcRenderer.invoke('circle:friends:send-request', friendUsername),
+  getCircleFriendRequests: () => ipcRenderer.invoke('circle:friends:get-requests'),
+  acceptCircleFriendRequest: (friendUsername: string) => ipcRenderer.invoke('circle:friends:accept-request', friendUsername),
+  declineCircleFriendRequest: (friendUsername: string) => ipcRenderer.invoke('circle:friends:decline-request', friendUsername),
+  getCircleFriendsList: () => ipcRenderer.invoke('circle:friends:list'),
+  getMyCircleAggregateStats: () => ipcRenderer.invoke('circle:stats:get-my-aggregate'),
+  syncCircleFriendsStats: () => ipcRenderer.invoke('circle:stats:sync-friends'),
+  getCachedCircleFriendStats: () => ipcRenderer.invoke('circle:stats:get-cached')
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

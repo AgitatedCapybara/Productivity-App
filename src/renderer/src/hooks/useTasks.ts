@@ -363,6 +363,7 @@ export function useTasks(enableLoading = false) {
             }
           }
         })
+        incrementTasksRevision()
       } catch (err: any) {
         removeTask(tempId)
         setError(err.message || 'Failed to create task')
@@ -370,7 +371,7 @@ export function useTasks(enableLoading = false) {
     } catch (err: any) {
       setError(err.message || 'Failed to create task')
     }
-  }, [addTask, removeTask, setError])
+  }, [addTask, removeTask, setError, incrementTasksRevision])
 
   const updateTask = useCallback(async (input: UpdateTaskInput): Promise<void> => {
     const { tasks, completedTasks } = useAppStore.getState()
@@ -387,12 +388,13 @@ export function useTasks(enableLoading = false) {
     
     try {
       await window.electronAPI.updateTask(input)
+      incrementTasksRevision()
     } catch (err: any) {
       // Revert on error
       updateStoreTask(previousTask)
       setError(err.message || 'Failed to update task')
     }
-  }, [updateStoreTask, setError])
+  }, [updateStoreTask, setError, incrementTasksRevision])
 
   const completeTask = useCallback(async (id: string): Promise<void> => {
     const { tasks, completedTasks } = useAppStore.getState()
@@ -410,6 +412,7 @@ export function useTasks(enableLoading = false) {
       
       try {
         await window.electronAPI.completeTask(id)
+        incrementTasksRevision()
       } catch (err: any) {
         // Revert on failure
         useAppStore.setState((state) => {
@@ -439,6 +442,7 @@ export function useTasks(enableLoading = false) {
 
       try {
         await window.electronAPI.updateTask({ id, status: 'todo', completed_at: null })
+        incrementTasksRevision()
       } catch (err: any) {
         // Revert on failure
         removeTask(id)
@@ -446,7 +450,7 @@ export function useTasks(enableLoading = false) {
         setError(err.message || 'Failed to un-complete task')
       }
     }
-  }, [removeTask, addCompletedTask, addTask, setError])
+  }, [removeTask, addCompletedTask, addTask, setError, incrementTasksRevision])
 
   const deleteTask = useCallback(async (id: string): Promise<void> => {
     const { tasks, completedTasks, deletedTasks } = useAppStore.getState()
@@ -478,6 +482,7 @@ export function useTasks(enableLoading = false) {
 
     try {
       await window.electronAPI.deleteTask(id)
+      incrementTasksRevision()
     } catch (err: any) {
       // Revert on failure
       setTasks(previousTasks)

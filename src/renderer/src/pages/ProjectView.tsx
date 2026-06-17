@@ -1,13 +1,17 @@
+import { useState } from 'react'
 import { useTasks } from '../hooks/useTasks'
 import { useAppStore } from '../store/useAppStore'
 import { QuickAdd } from '../components/tasks/QuickAdd'
 import { TaskSection } from '../components/tasks/TaskSection'
+import { Settings2 } from 'lucide-react'
+import { ProjectEditModal } from '../components/projects/ProjectEditModal'
 
 export function ProjectView() {
   const { tasks, isLoading, error } = useTasks(true)
   const selectedProjectId = useAppStore(state => state.selectedProjectId)
   const projects = useAppStore(state => state.projects)
   const project = projects.find(p => p.id === selectedProjectId)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
 
   if (!selectedProjectId || !project) {
     return (
@@ -35,13 +39,32 @@ export function ProjectView() {
       <div className="max-w-2xl w-full mx-auto h-full pt-16 pb-20" id="project-view-content">
         
         {/* Header */}
-        <header className="mb-8 select-none flex items-center gap-3" id="project-view-header">
-          <div 
-            className="w-3 h-3 rounded-full flex-shrink-0" 
-            style={{ backgroundColor: project.color }} 
-            id="project-view-color"
-          />
-          <h1 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]" id="project-view-title">{project.name}</h1>
+        <header className="mb-8 select-none flex items-center justify-between" id="project-view-header">
+          <div className="flex items-center gap-3">
+            {project.icon && project.icon.startsWith('data:image/') ? (
+              <img 
+                src={project.icon} 
+                alt={project.name}
+                className="w-7 h-7 rounded-full object-cover border border-[var(--border-subtle)]"
+                id="project-view-color-img"
+              />
+            ) : (
+              <div 
+                className="w-3.5 h-3.5 rounded-full flex-shrink-0" 
+                style={{ backgroundColor: project.color }} 
+                id="project-view-color"
+              />
+            )}
+            <h1 className="text-3xl font-bold tracking-tight text-[var(--text-primary)]" id="project-view-title">{project.name}</h1>
+          </div>
+
+          <button
+            onClick={() => setIsEditModalOpen(true)}
+            className="w-8 h-8 rounded-lg hover:bg-[var(--bg-hover)] border border-transparent hover:border-zinc-805 text-zinc-400 hover:text-zinc-200 transition-colors flex items-center justify-center cursor-pointer"
+            title="Edit project details"
+          >
+            <Settings2 size={16} />
+          </button>
         </header>
 
         {error && (
@@ -83,6 +106,12 @@ export function ProjectView() {
           </div>
         )}
       </div>
+
+      <ProjectEditModal 
+        isOpen={isEditModalOpen} 
+        onClose={() => setIsEditModalOpen(false)} 
+        initialEditProjectId={project.id} 
+      />
     </div>
   )
 }
