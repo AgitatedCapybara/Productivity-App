@@ -1,6 +1,7 @@
 // src/renderer/src/components/tasks/PostSessionOverview.tsx
 import { useState, useEffect } from 'react'
 import { motion } from 'motion/react'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
 import { 
   Sparkles, 
   TrendingDown, 
@@ -29,10 +30,19 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
   const projects = useAppStore(state => state.projects)
   const { updateTask } = useTasks()
 
+  // Helper to safely initialize ratings on a 1-5 scale (maps 1-10 gracefully)
+  const getInitialRating = (val: any, defaultVal: number = 4): number => {
+    if (val === undefined || val === null) return defaultVal
+    const num = Number(val)
+    if (isNaN(num)) return defaultVal
+    if (num > 5) return Math.min(5, Math.max(1, Math.round(num / 2)))
+    return Math.min(5, Math.max(1, num))
+  }
+
   // State - initialized from summary if available
   const [reflection, setReflection] = useState(summary?.reflection || '')
-  const [clarityRating, setClarityRating] = useState<number>(summary?.clarityRating || summary?.clarity_rating || 8)
-  const [energyRating, setEnergyRating] = useState<number>(summary?.energyRating || summary?.energy_rating || 7)
+  const [clarityRating, setClarityRating] = useState<number>(() => getInitialRating(summary?.clarityRating ?? summary?.clarity_rating, 4))
+  const [energyRating, setEnergyRating] = useState<number>(() => getInitialRating(summary?.energyRating ?? summary?.energy_rating, 4))
   const [markCompleted, setMarkCompleted] = useState(false)
   const [saving, setSaving] = useState(false)
 
@@ -51,8 +61,8 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
       if (currentId !== loadedSessionId) {
         setLoadedSessionId(currentId)
         setReflection(summary.reflection || '')
-        setClarityRating(summary.clarityRating || summary.clarity_rating || 8)
-        setEnergyRating(summary.energyRating || summary.energy_rating || 7)
+        setClarityRating(getInitialRating(summary.clarityRating ?? summary.clarity_rating, 4))
+        setEnergyRating(getInitialRating(summary.energyRating ?? summary.energy_rating, 4))
         
         const newDefaultName = summary.customName || summary.custom_name || summary.taskTitle || summary.task_title || (summary.taskId ? tasks.find((t: any) => t.id === summary.taskId)?.title : null) || 'Focus Session'
         setSessionName(newDefaultName)
@@ -97,21 +107,21 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
     return s > 0 ? `${m}m ${s}s` : `${m}m`
   }
 
-  // Energy descriptors
+  // Energy descriptors for 1-5 scale
   const getEnergyData = (rating: number) => {
-    if (rating <= 2) return { label: "Fully Drained", color: "text-rose-500", bg: "bg-rose-500/10", border: "border-rose-500/20", glow: "shadow-rose-500/20", emoji: "🥀" }
-    if (rating <= 4) return { label: "Low Battery", color: "text-amber-500", bg: "bg-amber-500/10", border: "border-amber-500/20", glow: "shadow-amber-500/10", emoji: "🔋" }
-    if (rating <= 6) return { label: "Sustaining Pace", color: "text-yellow-400", bg: "bg-yellow-400/10", border: "border-yellow-400/20", glow: "shadow-yellow-400/10", emoji: "⚡" }
-    if (rating <= 8) return { label: "High Capacity", color: "text-teal-400", bg: "bg-teal-500/10", border: "border-teal-500/20", glow: "shadow-teal-500/15", emoji: "💪" }
+    if (rating <= 1) return { label: "Fully Drained", color: "text-rose-500", bg: "bg-rose-500/10", border: "border-rose-500/20", glow: "shadow-rose-500/20", emoji: "🥀" }
+    if (rating <= 2) return { label: "Low Battery", color: "text-amber-500", bg: "bg-amber-500/10", border: "border-amber-500/20", glow: "shadow-amber-500/10", emoji: "🔋" }
+    if (rating <= 3) return { label: "Sustaining Pace", color: "text-yellow-400", bg: "bg-yellow-400/10", border: "border-yellow-400/20", glow: "shadow-yellow-400/10", emoji: "⚡" }
+    if (rating <= 4) return { label: "High Capacity", color: "text-teal-400", bg: "bg-teal-500/10", border: "border-teal-500/20", glow: "shadow-teal-500/15", emoji: "💪" }
     return { label: "Supercharged", color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20", glow: "shadow-emerald-500/20", emoji: "🔥" }
   }
 
-  // Clarity descriptors
+  // Clarity descriptors for 1-5 scale
   const getClarityData = (rating: number) => {
-    if (rating <= 2) return { label: "Mind Scattered", desc: "Attention constantly taken away by distractions." }
-    if (rating <= 4) return { label: "Surface Layer Focus", desc: "Mind drifting a lot, keeping focus on tasks required high effort." }
-    if (rating <= 6) return { label: "Steady Execution", desc: "Solid performance, standard attention." }
-    if (rating <= 8) return { label: "Deep Cognitive Flow", desc: "Excellent speed, brain worked like an engine." }
+    if (rating <= 1) return { label: "Mind Scattered", desc: "Attention constantly taken away by distractions." }
+    if (rating <= 2) return { label: "Surface Layer Focus", desc: "Mind drifting a lot, keeping focus on tasks required high effort." }
+    if (rating <= 3) return { label: "Steady Execution", desc: "Solid performance, standard attention." }
+    if (rating <= 4) return { label: "Deep Cognitive Flow", desc: "Excellent speed, brain worked like an engine." }
     return { label: "Omnipresent Brain", desc: "Focus that is out of this world. Time blurred as every neuron fires together." }
   }
 
@@ -157,10 +167,15 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
     }
   }
 
+  const containerRef = useModalFocusTrap<HTMLDivElement>({
+    isOpen: isHistorical,
+    onClose: handleSaveAndClose
+  })
+
   // Performance tier mapping matching requested metrics: 0% red, 50% yellow, 80% green, 100% blue
   let performanceTier = {
     title: "Flow State",
-    desc: "Amazing work! Keep it up and maybe you'll get a lollipop.",
+    desc: "Pristine focus flow maintained. Outstanding resilience during this tracking block.",
     color: "text-blue-400",
     accent: "from-blue-500/10 to-indigo-500/5",
     border: "border-blue-500/25",
@@ -204,13 +219,26 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
   const circumference = 2 * Math.PI * radius // 238.76
   const strokeDashoffset = circumference - (circumference * productivePct) / 100
 
+  const handleOuterClick = (e: React.MouseEvent) => {
+    if (isHistorical && e.target === e.currentTarget) {
+      handleSaveAndClose()
+    }
+  }
+
   return (
-    <div className={cn(
-      "flex items-center justify-center p-4 md:p-8 text-white relative select-none overflow-y-auto custom-scrollbar w-full",
-      isHistorical 
-        ? "fixed inset-0 bg-black/85 backdrop-blur-md z-50 h-full overflow-y-auto" 
-        : "flex-1 bg-[#09090b] h-full"
-    )}>
+    <div 
+      className={cn(
+        "flex items-center justify-center p-4 md:p-8 text-white relative select-none overflow-y-auto custom-scrollbar w-full outline-none",
+        isHistorical 
+          ? "fixed inset-0 bg-black/85 backdrop-blur-md z-50 h-full overflow-y-auto" 
+          : "flex-1 bg-[#09090b] h-full"
+      )}
+      onClick={handleOuterClick}
+      ref={isHistorical ? containerRef : undefined}
+      tabIndex={isHistorical ? -1 : undefined}
+      role={isHistorical ? "dialog" : undefined}
+      aria-modal={isHistorical ? "true" : undefined}
+    >
       {/* Visual background atmospheric elements */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/[0.03] blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-rose-500/[0.03] blur-[120px] rounded-full pointer-events-none" />
@@ -223,8 +251,9 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
         {/* Dynamic dismiss/close button */}
         <button
           onClick={handleSaveAndClose}
-          className="absolute top-5 right-5 p-2 hover:bg-zinc-800/80 hover:text-white text-zinc-400 rounded-xl transition-all cursor-pointer z-10 border border-zinc-800/30 bg-zinc-900/50"
+          className="absolute top-5 right-5 w-10 h-10 hover:bg-zinc-800/80 hover:text-white text-zinc-400 rounded-xl transition-all cursor-pointer z-10 border border-zinc-800/30 bg-zinc-900/50 flex items-center justify-center"
           title={isHistorical ? "Close details" : "Dismiss summary"}
+          aria-label="Close details"
         >
           <X size={16} />
         </button>
@@ -253,7 +282,10 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
                 )}
               </div>
               <p className="text-zinc-550 text-xs font-mono mt-0.5">
-                BLOCK ID: {summary?.sessionId || summary?.id || 'N/A'}
+                {summary?.startedAt || summary?.started_at
+                  ? `${new Date(summary.startedAt || summary.started_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })} · ${new Date(summary.startedAt || summary.started_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
+                  : 'Focus block summary details'
+                }
               </p>
             </div>
           </div>
@@ -410,7 +442,7 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
                 <div>
                   <h4 className="text-xs font-bold text-emerald-400">Pristine Safety Shield</h4>
                   <p className="text-zinc-500 text-xs mt-0.5 leading-normal">
-                    You did not switch to any blocked tabs or applications. Nice job son (im crine).
+                    Pristine focus flow maintained. Zero context switches detected during this tracking block.
                   </p>
                 </div>
               </div>
@@ -435,16 +467,16 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
             <div className="flex items-center justify-between text-xs font-sans">
               <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider font-mono flex items-center gap-1">
                 <Brain size={12} className="text-indigo-400" />
-                Focus Level
+                How clear was your thinking?
               </span>
               <span className="text-xs font-bold text-indigo-400 font-mono">
-                {clarityRating}/10
+                {clarityRating}/5
               </span>
             </div>
             
             {/* Horizontal segments */}
-            <div className="grid grid-cols-10 gap-1.5 select-none h-6">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+            <div className="grid grid-cols-5 gap-1.5 select-none h-6">
+              {[1, 2, 3, 4, 5].map((num) => {
                 const isActive = num <= clarityRating
                 return (
                   <button
@@ -476,10 +508,10 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
             <div className="flex items-center justify-between text-xs">
               <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider font-mono flex items-center gap-1">
                 <Zap size={12} className="text-yellow-405" />
-                Mental Energy Level
+                How's your energy?
               </span>
               <span className={cn("text-xs font-bold font-mono", activeEnergy.color)}>
-                {energyRating}/10 ({activeEnergy.label})
+                {energyRating}/5 ({activeEnergy.label})
               </span>
             </div>
 
@@ -500,8 +532,8 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
                 {/* Filled charge level height */}
                 <motion.div 
                   className={cn("w-full rounded-[4px] ease-out-quad transition-all blur-[0.5px]", activeEnergy.bg, activeEnergy.glow)}
-                  style={{ height: `${energyRating * 10}%` }}
-                  animate={{ height: `${energyRating * 10}%` }}
+                  style={{ height: `${energyRating * 20}%` }}
+                  animate={{ height: `${energyRating * 20}%` }}
                 />
               </div>
 
@@ -510,7 +542,7 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
                 <input 
                   type="range"
                   min="1"
-                  max="10"
+                  max="5"
                   step="1"
                   value={energyRating}
                   onChange={(e) => setEnergyRating(parseInt(e.target.value))}
@@ -518,8 +550,8 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
                 />
                 <div className="flex items-center justify-between font-mono text-[9px] text-zinc-500 font-semibold px-0.5">
                   <span onClick={() => setEnergyRating(1)} className="hover:text-rose-400 cursor-pointer">🥀 DRAINED</span>
-                  <span onClick={() => setEnergyRating(5)} className="hover:text-yellow-400 cursor-pointer">⚡ STEADY</span>
-                  <span onClick={() => setEnergyRating(10)} className="hover:text-emerald-400 cursor-pointer">🔥 PEAK</span>
+                  <span onClick={() => setEnergyRating(3)} className="hover:text-yellow-400 cursor-pointer">⚡ STEADY</span>
+                  <span onClick={() => setEnergyRating(5)} className="hover:text-emerald-400 cursor-pointer">🔥 PEAK</span>
                 </div>
               </div>
             </div>
@@ -535,7 +567,7 @@ export function PostSessionOverview({ summary, targetMinutes, onClose, isHistori
               value={reflection}
               onChange={(e) => setReflection(e.target.value)}
               placeholder="Document milestones and your reflections..."
-              className="flex-1 min-h-[110px] bg-zinc-950/40 border border-zinc-800/80 p-3 rounded-xl text-xs text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 font-sans leading-relaxed resize-none custom-scrollbar"
+              className="flex-1 min-h-[110px] bg-zinc-950/40 border border-zinc-800/80 p-3 rounded-xl text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50 focus:ring-1 focus:ring-indigo-500/20 font-sans leading-relaxed resize-none custom-scrollbar"
             />
           </div>
 

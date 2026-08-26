@@ -5,7 +5,7 @@ import { TaskSection } from '../components/tasks/TaskSection'
 import { Task } from '../types'
 
 export function UpcomingView() {
-  const { tasks, isLoading, error } = useTasks(true)
+  const { tasks, isLoading, error } = useTasks(true, 'upcoming')
 
   const tomorrowStr = useMemo(() => {
     return format(addDays(new Date(), 1), 'yyyy-MM-dd')
@@ -38,7 +38,7 @@ export function UpcomingView() {
   }, [tasks])
 
   return (
-    <div className="flex-1 overflow-y-auto px-8 relative outline-none custom-scrollbar" id="upcoming-view-container">
+    <div className="flex-1 overflow-y-auto px-8 relative outline-none custom-scrollbar view-container" id="upcoming-view-container">
       <div className="max-w-2xl w-full mx-auto h-full pt-16 pb-20" id="upcoming-view-content">
         
         {/* Header */}

@@ -51,5 +51,25 @@ export function updateEvent(input: UpdateCalendarEventInput): CalendarEvent {
 
 export function deleteEvent(id: string): void {
   const db = getDb()
+  
+  // Look up event details before deletion to check for matching suggestions
+  const event = db.prepare('SELECT * FROM calendar_events WHERE id = ?').get(id) as CalendarEvent | undefined
+  if (event) {
+    const suggestion = db.prepare(`
+      SELECT id FROM suggestions
+      WHERE status = 'accepted'
+      AND suggested_start = ?
+      AND suggested_end = ?
+    `).get(event.start_at, event.end_at) as { id: string } | undefined
+
+    if (suggestion) {
+      db.prepare(`
+        UPDATE suggestions
+        SET status = 'pending', resolved_at = NULL
+        WHERE id = ?
+      `).run(suggestion.id)
+    }
+  }
+
   db.prepare('DELETE FROM calendar_events WHERE id = ?').run(id)
 }

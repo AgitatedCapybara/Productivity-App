@@ -1,5 +1,5 @@
 // src/renderer/src/pages/FocusWorkspaceView.tsx
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { 
   Play, 
@@ -20,9 +20,10 @@ export function FocusWorkspaceView() {
   const activeSessionId = useAppStore(state => state.activeSessionId)
   const setActiveSession = useAppStore(state => state.setActiveSession)
   const setActiveTaskId = useAppStore(state => state.setActiveTaskId)
+  const setActiveView = useAppStore(state => state.setActiveView)
   const projects = useAppStore(state => state.projects)
 
-  const { tasks, completeTask } = useTasks(true)
+  const { tasks, completeTask } = useTasks(true, 'focus-workspace')
   const [activeTab, setActiveTab] = useState<string>('inbox-default')
 
   // Find all projects, ensuring we always have Inbox, Personal, Work
@@ -64,11 +65,40 @@ export function FocusWorkspaceView() {
 
   // Session state from backend
   const [session, setSession] = useState<any>(null)
-  const [elapsedSeconds, setElapsedSeconds] = useState(0)
+  const elapsedSeconds = useAppStore(state => state.activeSessionElapsedSeconds)
+  const currentPhase = useAppStore(state => state.currentPhase)
+  const targetStudyDurationMins = useAppStore(state => state.targetStudyDurationMins)
+  const targetBreakDurationMins = useAppStore(state => state.targetBreakDurationMins)
+  const [rawDistractionCount, setRawDistractionCount] = useState(0)
+  const [rawDistractions, setRawDistractions] = useState<any[]>([])
   const [distractionCount, setDistractionCount] = useState(0)
+  const [distractions, setDistractions] = useState<any[]>([])
   const [isPaused, setIsPaused] = useState(false)
   const [targetMinutes, setTargetMinutes] = useState(25)
-  const [distractions, setDistractions] = useState<any[]>([])
+
+  const lastUpdateRef = useRef<number>(0)
+
+  useEffect(() => {
+    lastUpdateRef.current = 0
+  }, [session?.id])
+
+  useEffect(() => {
+    const now = Date.now()
+    const limit = 300000 // 5 minutes in ms
+    if (rawDistractionCount === 0 || lastUpdateRef.current === 0 || now - lastUpdateRef.current >= limit) {
+      setDistractionCount(rawDistractionCount)
+      setDistractions(rawDistractions)
+      lastUpdateRef.current = now
+    } else {
+      const delay = limit - (now - lastUpdateRef.current)
+      const t = setTimeout(() => {
+        setDistractionCount(rawDistractionCount)
+        setDistractions(rawDistractions)
+        lastUpdateRef.current = Date.now()
+      }, delay)
+      return () => clearTimeout(t)
+    }
+  }, [rawDistractionCount, rawDistractions])
 
   // Completion summary state
   const [summary, setSummary] = useState<any | null>(null)
@@ -80,6 +110,7 @@ export function FocusWorkspaceView() {
   const [diagnostics, setDiagnostics] = useState<any>(null)
   const [diagnosticError, setDiagnosticError] = useState<string | null>(null)
   const [showDiagnostics, setShowDiagnostics] = useState(false)
+  const [showSystemResumePrompt, setShowSystemResumePrompt] = useState(false)
 
   // Poll diagnostics in real-time
   useEffect(() => {
@@ -121,7 +152,7 @@ export function FocusWorkspaceView() {
       console.log(`[WORKSPACE VIEW] loadActiveSession (attempt ${retryCount + 1}) fetched active:`, JSON.stringify(active), 'current summary is:', JSON.stringify(summary))
       if (active) {
         setSession(active)
-        setDistractionCount(active.distractionCount ?? 0)
+        setRawDistractionCount(active.distractionCount ?? 0)
         setIsPaused(active.status === 'paused')
         const mins = active.targetDurationMins || (active as any).target_duration_mins || 25
         setTargetMinutes(mins)
@@ -131,13 +162,13 @@ export function FocusWorkspaceView() {
         if (startIso) {
           const startMs = new Date(startIso).getTime()
           const diffSecs = Math.floor((Date.now() - startMs) / 1000)
-          setElapsedSeconds(Math.max(0, diffSecs))
+          useAppStore.getState().setSessionElapsedSeconds(Math.max(0, diffSecs))
         }
 
         // Fetch distractions list
         if (window.electronAPI.getSessionDistractions) {
           const dl = await window.electronAPI.getSessionDistractions(active.id)
-          setDistractions(dl)
+          setRawDistractions(dl)
         }
       } else {
         // If active is null but activeSessionId is set in store, wait and try again
@@ -169,15 +200,22 @@ export function FocusWorkspaceView() {
     })
 
     const removeDistractionListener = window.electronAPI.onSessionDistractionUpdate((count) => {
-      setDistractionCount(count)
+      setRawDistractionCount(count)
       if (activeSessionId && window.electronAPI.getSessionDistractions) {
-        window.electronAPI.getSessionDistractions(activeSessionId).then(setDistractions)
+        window.electronAPI.getSessionDistractions(activeSessionId).then(setRawDistractions)
       }
+    })
+
+    const removeResumeListener = window.electronAPI.onSessionSystemResumed?.((sessionId) => {
+      console.log('[WORKSPACE VIEW] System resumed for session:', sessionId)
+      setShowSystemResumePrompt(true)
+      loadActiveSession()
     })
 
     return () => {
       if (typeof removeStateListener === 'function') removeStateListener()
       if (typeof removeDistractionListener === 'function') removeDistractionListener()
+      if (typeof removeResumeListener === 'function') removeResumeListener()
     }
   }, [activeSessionId])
 
@@ -190,7 +228,7 @@ export function FocusWorkspaceView() {
       if (!startIso) return
       const startMs = new Date(startIso).getTime()
       const diffSecs = Math.floor((Date.now() - startMs) / 1000)
-      setElapsedSeconds(Math.max(0, diffSecs))
+      useAppStore.getState().setSessionElapsedSeconds(Math.max(0, diffSecs))
     }
 
     calculateElapsed()
@@ -203,7 +241,7 @@ export function FocusWorkspaceView() {
     const distractInterval = setInterval(() => {
       if (activeSessionId && window.electronAPI && window.electronAPI.getSessionDistractions) {
         window.electronAPI.getSessionDistractions(activeSessionId)
-          .then(setDistractions)
+          .then(setRawDistractions)
           .catch(console.error)
       }
     }, 5000)
@@ -250,10 +288,14 @@ export function FocusWorkspaceView() {
     setSummary(null)
     setActiveSession(null)
     setActiveTaskId(null)
+    setActiveView('analytics')
   }
 
   // Timer calculation
-  const targetSeconds = targetMinutes * 60
+  const activeTargetMins = currentPhase === 'study' 
+    ? (session?.targetDurationMins || targetStudyDurationMins || 25) 
+    : (session?.targetBreakDurationMins || targetBreakDurationMins || 5)
+  const targetSeconds = activeTargetMins * 60
   const isOvertime = elapsedSeconds > targetSeconds
   const displaySeconds = isOvertime ? (elapsedSeconds - targetSeconds) : (targetSeconds - elapsedSeconds)
 
@@ -317,10 +359,56 @@ export function FocusWorkspaceView() {
 
   // Render Active Immersive Focus View State
   return (
-    <div className="flex-1 bg-[#09090b] flex flex-col text-white px-8 py-10 overflow-y-auto relative select-none">
+    <div className="flex-1 bg-[#09090b] flex flex-col text-white px-8 py-10 overflow-y-auto relative select-none view-container">
       {/* Background soft glowing blur */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/[0.02] blur-[120px] rounded-full pointer-events-none" />
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-sky-500/[0.02] blur-[120px] rounded-full pointer-events-none" />
+
+      {/* Gentle Non-Punitive System Resume Prompt */}
+      <AnimatePresence>
+        {showSystemResumePrompt && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            className="absolute top-6 left-1/2 -translate-x-1/2 z-50 max-w-md w-[calc(100%-3rem)] bg-zinc-950/90 border border-indigo-500/20 rounded-2xl p-4 shadow-2xl backdrop-blur-xl"
+            id="system-resume-prompt-banner"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mt-0.5 shrink-0">
+                <Sparkles size={16} className="animate-pulse" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="font-bold text-xs text-zinc-100 uppercase tracking-widest">System Pause Recovered</p>
+                <p className="text-xs text-zinc-400 leading-relaxed">
+                  Welcome back! Your focus block has been securely held. Shall we resume your workspace flow?
+                </p>
+                <div className="flex items-center gap-2 pt-2">
+                  <button
+                    onClick={async () => {
+                      if (window.electronAPI && window.electronAPI.resumeSession) {
+                        await window.electronAPI.resumeSession()
+                        setIsPaused(false)
+                        setShowSystemResumePrompt(false)
+                        loadActiveSession()
+                      }
+                    }}
+                    className="bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-xl cursor-pointer transition-colors"
+                  >
+                    Resume Flow
+                  </button>
+                  <button
+                    onClick={() => setShowSystemResumePrompt(false)}
+                    className="bg-zinc-900 hover:bg-zinc-850 border border-zinc-800 text-zinc-400 hover:text-zinc-200 font-semibold text-[10px] uppercase tracking-wider px-3 py-1.5 rounded-xl cursor-pointer transition-colors"
+                  >
+                    Keep Paused
+                  </button>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Main Grid Wrapper */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-6xl w-full mx-auto flex-1 items-start mt-4 relative z-10">
@@ -350,7 +438,10 @@ export function FocusWorkspaceView() {
         {/* Ring Clock Graphic */}
         <div className="relative w-56 h-56 flex items-center justify-center">
           {/* Visual glow backdrop */}
-          <div className="absolute w-48 h-48 bg-indigo-500/5 filter blur-[32px] rounded-full" />
+          <div className={cn(
+            "absolute w-48 h-48 filter blur-[32px] rounded-full transition-all duration-700",
+            currentPhase === 'study' ? "bg-indigo-500/5" : "bg-emerald-500/5"
+          )} />
           
           <svg className="w-full h-full transform -rotate-90">
             {/* Outer dark track */}
@@ -372,17 +463,27 @@ export function FocusWorkspaceView() {
                   ? "stroke-zinc-650" 
                   : isOvertime 
                     ? "stroke-rose-500 shadow-lg" 
-                    : "stroke-indigo-400"
+                    : currentPhase === 'study'
+                      ? "stroke-indigo-400"
+                      : "stroke-emerald-400"
               )}
               strokeWidth="6"
               strokeDasharray="534" // 2 * pi * 85
-              strokeDashoffset={isOvertime ? 0 : 534 * (1 - progressRatio)}
+              strokeDashoffset={isOvertime ? 0 : 534 * progressRatio}
               strokeLinecap="round"
             />
           </svg>
 
           {/* Time digits inside the ring */}
           <div className="absolute flex flex-col items-center justify-center select-none">
+            <span className={cn(
+              "text-[10px] font-bold uppercase tracking-widest mb-1.5 select-none flex items-center gap-1 px-2.5 py-0.5 rounded-full transition-all duration-500 border",
+              currentPhase === 'study'
+                ? "text-indigo-400 bg-indigo-500/10 border-indigo-500/20"
+                : "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+            )}>
+              {currentPhase === 'study' ? '✍️ Study Block' : '☕ Break Time'}
+            </span>
             {isOvertime && (
               <span className="text-[10px] font-bold text-rose-450 uppercase tracking-widest mb-1 select-none flex items-center gap-1 animate-pulse">
                 Overtime
@@ -395,7 +496,7 @@ export function FocusWorkspaceView() {
               {formatTime(displaySeconds)}
             </span>
             <span className="text-xs text-zinc-550 block mt-1 font-mono">
-              of {targetMinutes}:00m
+              of {activeTargetMins}:00m
             </span>
           </div>
         </div>

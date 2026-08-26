@@ -27,7 +27,7 @@ export function TaskSection({ title, tasks, accentColor, defaultOpen = true, hea
       animate={{
         height: hasTasks ? 'auto' : 0,
         opacity: hasTasks ? 1 : 0,
-        marginBottom: hasTasks ? 16 : 0,
+        marginBottom: 0,
         pointerEvents: hasTasks ? 'auto' : 'none'
       }}
       transition={{
@@ -54,12 +54,12 @@ export function TaskSection({ title, tasks, accentColor, defaultOpen = true, hea
               <ChevronRight size={14} className="text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] transition-colors" />
             </div>
             <span 
-              className="text-[11px] font-medium uppercase tracking-[0.05em]" 
+              className="text-[17px] font-semibold" 
               style={{ color: accentColor || 'var(--text-secondary)' }}
             >
               {title}
             </span>
-            <span className="text-[11px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-1.5 py-0.5 rounded-md min-w-[20px] text-center">
+            <span className="text-[13px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-1.5 py-0.5 rounded-md min-w-[20px] text-center font-normal">
               {tasks.length}
             </span>
           </CollapsibleTrigger>

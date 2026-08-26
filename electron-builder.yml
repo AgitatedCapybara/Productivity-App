@@ -1,0 +1,49 @@
+# electron-builder.yml
+# Native target packaging and code-signing configurations for Keystone
+appId: com.keystone.Keystone
+productName: Keystone
+copyright: Copyright © 2026 Solo Dev
+
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - out/**/*
+  - package.json
+  - resources/**/*
+
+win:
+  icon: resources/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - arm64
+  # Mitigate EV cert execution restrictions and smartscreen warning barriers
+  signingHashAlgorithms:
+    - sha256
+  # Ensure developer builds run normally without codesigning requirements
+  forceCodeSigning: false
+
+mac:
+  icon: resources/icon.png
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.productivity
+  # Mitigate Gatekeeper blocks under macOS targets
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  # Ensure developer builds run normally without codesigning requirements
+  forceCodeSigning: false
+  identity: null
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Keystone

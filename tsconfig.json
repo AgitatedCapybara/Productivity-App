@@ -23,6 +23,12 @@
   },
   "include": [
     "src",
-    "electron"
+    "electron",
+    "tests",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
   ]
 }

@@ -1,7 +1,9 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import * as chrono from 'chrono-node'
 import { useAppStore } from '../store/useAppStore'
+import { useCelebrationStore } from '../store/useCelebrationStore'
 import type { CreateTaskInput, UpdateTaskInput } from '../types'
+import { getNextOccurrenceDate } from '../lib/recurrence'
 
 export function splitChronoText(text: string): string[] {
   // Matches preposition times like "at 3pm", "around 10:30am", "by noon", "at 5"
@@ -57,29 +59,109 @@ export function splitChronoText(text: string): string[] {
   return parts.filter(Boolean);
 }
 
-export function parseTaskInput(raw: string, keepDateText = false, ignoredPhrases: string[] = []) {
+export function parseTaskInput(
+  raw: string,
+  keepDateText = false,
+  ignoredPhrases: string[] = [],
+  knownProjectNames: string[] = []
+) {
   let title = raw
-  
-  // Track all potential parseable phrases with details
-  const parsedPhrases: { text: string; type: 'project' | 'priority' | 'date'; ignored: boolean }[] = []
+  const parsedPhrases: { text: string; type: 'project' | 'priority' | 'date' | 'recurrence' | 'duration' | 'label' | 'energy' | 'location' | 'reminder'; ignored: boolean }[] = []
 
   let projectTag: string | null = null
-  const projectMatch = title.match(/@(\w+)/)
-  if (projectMatch) {
-    const fullMatchText = projectMatch[0]
+  let location: string | null = null
+
+  const lowerKnownProjects = knownProjectNames.map(p => p.toLowerCase())
+
+  // Disambiguate and extract @projects vs @locations
+  const projectOrLocationMatches = [...title.matchAll(/@([\w-]+)/g)]
+  for (const match of projectOrLocationMatches) {
+    const fullMatchText = match[0]
+    const nameStr = match[1]
+    const nameStrLower = nameStr.toLowerCase()
+
     const isIgnored = ignoredPhrases.some(phrase => phrase.toLowerCase() === fullMatchText.toLowerCase())
-    parsedPhrases.push({
-      text: fullMatchText,
-      type: 'project',
-      ignored: isIgnored
-    })
-    
-    if (!isIgnored) {
-      projectTag = projectMatch[1]
+    if (isIgnored) {
+      parsedPhrases.push({ text: fullMatchText, type: 'project', ignored: true })
+      continue
+    }
+
+    const commonLocations = ['home', 'office', 'school', 'gym', 'store', 'cafe', 'room', 'desk', 'kitchen']
+    const isExplicitLocation = commonLocations.includes(nameStrLower)
+    const isKnownProject = lowerKnownProjects.includes(nameStrLower)
+
+    if (isExplicitLocation || (!isKnownProject && (nameStrLower === 'home' || nameStrLower === 'office' || !lowerKnownProjects.includes(nameStrLower)))) {
+      location = nameStr
+      parsedPhrases.push({ text: fullMatchText, type: 'location', ignored: false })
+      title = title.replace(fullMatchText, '').trim()
+    } else {
+      projectTag = nameStr
+      parsedPhrases.push({ text: fullMatchText, type: 'project', ignored: false })
       title = title.replace(fullMatchText, '').trim()
     }
   }
 
+  // Energy tags: "low energy", "high focus"
+  let energy_tag: string | null = null
+  const energyMatch = title.match(/\b(low energy|high focus|medium energy|high energy|low focus|med energy)\b/i)
+  if (energyMatch) {
+    const fullMatchText = energyMatch[0]
+    energy_tag = energyMatch[1]
+    parsedPhrases.push({ text: fullMatchText, type: 'energy', ignored: false })
+    title = title.replace(new RegExp(`\\b${fullMatchText.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i'), '').trim()
+  }
+
+  // Duration estimation: "for 30m", "for 2h", "~45min", etc.
+  let time_estimate_mins = 0
+  const durationMatch = title.match(/\b(?:for\s+|^~|~)\s*(\d+)\s*(m|min|mins|h|hr|hrs|hour|hours)\b/i)
+  if (durationMatch) {
+    const fullMatchText = durationMatch[0]
+    const amount = parseInt(durationMatch[1], 10)
+    const unit = durationMatch[2].toLowerCase()
+    
+    if (unit.startsWith('h')) {
+      time_estimate_mins = amount * 60
+    } else {
+      time_estimate_mins = amount
+    }
+
+    parsedPhrases.push({ text: fullMatchText, type: 'duration', ignored: false })
+    title = title.replace(fullMatchText, '').trim()
+  }
+
+  // Labels: "#deep-work", "#email", "#errand"
+  const labels: string[] = []
+  const labelMatches = [...title.matchAll(/#([\w-]+)/g)]
+  for (const match of labelMatches) {
+    const fullMatchText = match[0]
+    const labelVal = match[1]
+    labels.push(labelVal)
+    parsedPhrases.push({ text: fullMatchText, type: 'label', ignored: false })
+    title = title.replace(fullMatchText, '').trim()
+  }
+
+  // Reminder syntax: "remind 10m before", "!1h"
+  let reminder: string | null = null
+  const reminderMatch = title.match(/\bremind\s+(\d+\s*(?:m|min|mins|h|hr|hrs|hour|hours))\s+before\b/i) || title.match(/\b!(\d+\s*(?:m|min|mins|h|hr|hrs|hour|hours))\b/i)
+  if (reminderMatch) {
+    const fullMatchText = reminderMatch[0]
+    reminder = reminderMatch[1]
+    parsedPhrases.push({ text: fullMatchText, type: 'reminder', ignored: false })
+    title = title.replace(fullMatchText, '').trim()
+  }
+
+  // Recurring patterns: "every Monday", "every 2 weeks", "every weekday", "first Friday of each month"
+  let recurrence: string | null = null
+  const recurrenceMatch = title.match(/\bevery\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday|weekday|day|week|month|year|2\s+weeks|\d+\s+days|\d+\s+weeks)/i) || 
+                          title.match(/\bfirst\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+of\s+each\s+month/i)
+  if (recurrenceMatch) {
+    const fullMatchText = recurrenceMatch[0]
+    recurrence = fullMatchText
+    parsedPhrases.push({ text: fullMatchText, type: 'recurrence', ignored: false })
+    title = title.replace(fullMatchText, '').trim()
+  }
+
+  // Priority
   let priority: 0 | 1 | 2 | 3 = 0
   const priorityMatch = title.match(/\bp([123])\b/i)
   if (priorityMatch) {
@@ -100,7 +182,7 @@ export function parseTaskInput(raw: string, keepDateText = false, ignoredPhrases
     }
   }
 
-  // Generate reference parsing results to see what words were captured
+  // Chrono date/time parsing
   const rawResults = chrono.parse(title, new Date(), { forwardDate: true })
   for (const res of rawResults) {
     const splitParts = splitChronoText(res.text)
@@ -114,7 +196,6 @@ export function parseTaskInput(raw: string, keepDateText = false, ignoredPhrases
     }
   }
 
-  // Create masked title by removing any ignored phrases entirely so that chrono doesn't parse them
   let chronoTitle = title
   for (const phrase of ignoredPhrases) {
     const escaped = phrase.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
@@ -123,90 +204,122 @@ export function parseTaskInput(raw: string, keepDateText = false, ignoredPhrases
     chronoTitle = chronoTitle.replace(regex, ' ')
   }
 
-  // Execute actual parsing on the masked text to get real date/time outputs
   const activeResults = chrono.parse(chronoTitle, new Date(), { forwardDate: true })
 
-  if (activeResults.length === 0) {
-    return { title, due_date: null, due_time: null, priority, projectTag, parsedPhrases }
-  }
-  
-  // Start with the first result's date info
-  const firstResult = activeResults[0]
-  let date = firstResult.start.date()
-  let hasTime = firstResult.start.isCertain('hour')
-  let hasExplicitDate = firstResult.start.isCertain('day') || firstResult.start.isCertain('weekday') || firstResult.start.isCertain('month')
+  let due_date: string | null = null
+  let due_time: string | null = null
 
-  // Merge subsequent results in case date and time are parsed as separate blocks (e.g., "tomorrow 10am")
-  for (let i = 1; i < activeResults.length; i++) {
-    const res = activeResults[i]
-    if (res.start.isCertain('hour')) {
-      hasTime = true
-      const hour = res.start.get('hour')
-      const minute = res.start.get('minute')
-      if (hour !== undefined && hour !== null) date.setHours(hour)
-      if (minute !== undefined && minute !== null) date.setMinutes(minute)
-    }
-    if (res.start.isCertain('day') || res.start.isCertain('weekday') || res.start.isCertain('month')) {
-      hasExplicitDate = true
-      const year = res.start.get('year')
-      const month = res.start.get('month')
-      const day = res.start.get('day')
-      if (year !== undefined && year !== null) date.setFullYear(year)
-      if (month !== undefined && month !== null) date.setMonth(month - 1)
-      if (day !== undefined && day !== null) date.setDate(day)
-    }
-  }
+  if (activeResults.length > 0) {
+    const firstResult = activeResults[0]
+    let date = firstResult.start.date()
+    let hasTime = firstResult.start.isCertain('hour')
+    let hasExplicitDate = firstResult.start.isCertain('day') || firstResult.start.isCertain('weekday') || firstResult.start.isCertain('month')
 
-  // Prevent time forwarding to tomorrow if no explicit date keyword was specified (e.g. only "9 AM")
-  if (hasTime && !hasExplicitDate) {
-    const today = new Date()
-    date = new Date(today.getFullYear(), today.getMonth(), today.getDate(), date.getHours(), date.getMinutes(), date.getSeconds())
-  }
-  
-  // Use local time, not UTC time for the date string format
-  const due_date = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
-  
-  const due_time = hasTime
-    ? `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
-    : null
+    for (let i = 1; i < activeResults.length; i++) {
+      const res = activeResults[i]
+      if (res.start.isCertain('hour')) {
+        hasTime = true
+        const hour = res.start.get('hour')
+        const minute = res.start.get('minute')
+        if (hour !== undefined && hour !== null) date.setHours(hour)
+        if (minute !== undefined && minute !== null) date.setMinutes(minute)
+      }
+      if (res.start.isCertain('day') || res.start.isCertain('weekday') || res.start.isCertain('month')) {
+        hasExplicitDate = true
+        const year = res.start.get('year')
+        const month = res.start.get('month')
+        const day = res.start.get('day')
+        if (year !== undefined && year !== null) date.setFullYear(year)
+        if (month !== undefined && month !== null) date.setMonth(month - 1)
+        if (day !== undefined && day !== null) date.setDate(day)
+      }
+    }
+
+    if (hasTime && !hasExplicitDate) {
+      const today = new Date()
+      date = new Date(today.getFullYear(), today.getMonth(), today.getDate(), date.getHours(), date.getMinutes(), date.getSeconds())
+    }
     
-  if (keepDateText) {
-    return { title, due_date, due_time, priority, projectTag, parsedPhrases }
+    due_date = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    due_time = hasTime
+      ? `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+      : null
+
+    if (!keepDateText) {
+      for (const res of activeResults) {
+        const escaped = res.text.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+        title = title.replace(new RegExp(escaped, 'i'), '')
+      }
+    }
   }
 
-  // Clean the title by removing parsed chronological texts from activeResults
-  for (const res of activeResults) {
-    const escaped = res.text.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
-    title = title.replace(new RegExp(escaped, 'i'), '')
-  }
-  
   title = title.replace(/\(\s*\)/g, '').replace(/\[\s*\]/g, '').replace(/\s+/g, ' ').trim()
-  return { title, due_date, due_time, priority, projectTag, parsedPhrases }
+
+  // Confidence calculation
+  let baseScore = 0.5
+  if (due_date) baseScore += 0.15
+  if (projectTag) baseScore += 0.15
+  if (priority > 0) baseScore += 0.10
+  if (recurrence) baseScore += 0.15
+  if (time_estimate_mins > 0) baseScore += 0.15
+  if (labels.length > 0) baseScore += 0.10
+  if (energy_tag || location || reminder) baseScore += 0.10
+  const confidence = Math.max(0.0, Math.min(1.0, baseScore))
+
+  return {
+    title,
+    due_date,
+    due_time,
+    priority,
+    projectTag,
+    parsedPhrases,
+    recurrence,
+    time_estimate_mins,
+    labels,
+    energy_tag,
+    location,
+    reminder,
+    confidence
+  }
 }
 
-export function useTasks(enableLoading = false) {
-  const { 
-    tasks, 
-    completedTasks, 
-    deletedTasks,
-    error, 
-    setTasks, 
-    setCompletedTasks, 
-    setDeletedTasks,
-    addCompletedTask, 
-    addTask, 
-    updateTask: updateStoreTask, 
-    removeTask, 
-    reorderTasks: reorderStoreTasks, 
-    setError,
-    incrementTasksRevision
-  } = useAppStore()
+const EMPTY_ARRAY: any[] = []
+
+export function useTasks(enableLoading = false, viewOverride?: string) {
+  const deletedTasks = useAppStore(state => state.deletedTasks)
+  const error = useAppStore(state => state.error)
+  const setTasksForView = useAppStore(state => state.setTasksForView)
+  const setCompletedTasksForView = useAppStore(state => state.setCompletedTasksForView)
+  const setDeletedTasks = useAppStore(state => state.setDeletedTasks)
+  const addCompletedTask = useAppStore(state => state.addCompletedTask)
+  const addTask = useAppStore(state => state.addTask)
+  const updateStoreTask = useAppStore(state => state.updateTask)
+  const removeTask = useAppStore(state => state.removeTask)
+  const reorderStoreTasks = useAppStore(state => state.reorderTasks)
+  const setError = useAppStore(state => state.setError)
+  const incrementTasksRevision = useAppStore(state => state.incrementTasksRevision)
+
   const setActiveSession = useAppStore(state => state.setActiveSession)
   const setActiveTaskId = useAppStore(state => state.setActiveTaskId)
   const tasksRevision = useAppStore(state => state.tasksRevision)
   const [isLoading, setLoading] = useState(false)
   const activeView = useAppStore(state => state.activeView)
   const selectedProjectId = useAppStore(state => state.selectedProjectId)
+
+  // Resolve targetViewKey
+  let targetViewKey = 'today'
+  if (viewOverride) {
+    if (viewOverride === 'project') {
+      targetViewKey = selectedProjectId ? `project-${selectedProjectId}` : 'project'
+    } else {
+      targetViewKey = viewOverride
+    }
+  } else {
+    targetViewKey = activeView === 'project' && selectedProjectId ? `project-${selectedProjectId}` : activeView
+  }
+
+  const tasks = useAppStore(state => state.tasksByView[targetViewKey] || EMPTY_ARRAY)
+  const completedTasks = useAppStore(state => state.completedTasksByView[targetViewKey] || EMPTY_ARRAY)
 
   const loadTasks = useCallback(async (silent = false): Promise<void> => {
     if (!silent) setLoading(true)
@@ -225,37 +338,43 @@ export function useTasks(enableLoading = false) {
         setDeletedTasks([])
       }
 
-      const activeView = useAppStore.getState().activeView
-      const selectedProjectId = useAppStore.getState().selectedProjectId
-
-      if (activeView === 'today') {
+      if (targetViewKey === 'today') {
         const [tasksResult, completedResult] = await Promise.allSettled([
           window.electronAPI.getTasksForToday(),
           window.electronAPI.getTodayCompletedTasks()
         ])
-        if (tasksResult.status === 'fulfilled') setTasks(tasksResult.value)
-        else setTasks([])
-        if (completedResult.status === 'fulfilled') setCompletedTasks(completedResult.value)
-        else setCompletedTasks([])
-      } else if (activeView === 'upcoming') {
+        if (tasksResult.status === 'fulfilled') setTasksForView('today', tasksResult.value)
+        else setTasksForView('today', [])
+        if (completedResult.status === 'fulfilled') setCompletedTasksForView('today', completedResult.value)
+        else setCompletedTasksForView('today', [])
+      } else if (targetViewKey === 'upcoming') {
         const upcomingTasks = await window.electronAPI.getTasksUpcoming()
-        setTasks(upcomingTasks)
-        setCompletedTasks([])
-      } else if (activeView === 'project') {
-        if (!selectedProjectId) {
-          if (!silent) setLoading(false)
-          return
+        setTasksForView('upcoming', upcomingTasks)
+        setCompletedTasksForView('upcoming', [])
+      } else if (targetViewKey.startsWith('project-')) {
+        const projectId = targetViewKey.replace('project-', '')
+        const projectTasks = await window.electronAPI.getTasksByProject(projectId)
+        setTasksForView(targetViewKey, projectTasks)
+        setCompletedTasksForView(targetViewKey, [])
+      } else {
+        // Fallback for views like Inbox: load all tasks
+        try {
+          const allTasks = await window.electronAPI.getTasks()
+          const active = allTasks.filter((t: any) => t.status !== 'done' && t.status !== 'deleted')
+          const completed = allTasks.filter((t: any) => t.status === 'done')
+          setTasksForView(targetViewKey, active)
+          setCompletedTasksForView(targetViewKey, completed)
+        } catch (err) {
+          setTasksForView(targetViewKey, [])
+          setCompletedTasksForView(targetViewKey, [])
         }
-        const projectTasks = await window.electronAPI.getTasksByProject(selectedProjectId)
-        setTasks(projectTasks)
-        setCompletedTasks([])
       }
     } catch (err: any) {
       setError(err.message || 'Failed to load tasks')
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [setDeletedTasks, setTasks, setCompletedTasks, setError, setLoading])
+  }, [targetViewKey, setDeletedTasks, setTasksForView, setCompletedTasksForView, setError, setLoading])
 
   const loadTasksRef = useRef(loadTasks)
   useEffect(() => {
@@ -266,7 +385,7 @@ export function useTasks(enableLoading = false) {
     if (!enableLoading) return
     // Standard load for view/project changes
     loadTasksRef.current(false)
-  }, [activeView, selectedProjectId, enableLoading])
+  }, [targetViewKey, enableLoading])
 
   const prevRevision = useRef(tasksRevision)
   const debounceTimer = useRef<NodeJS.Timeout | null>(null)
@@ -294,15 +413,28 @@ export function useTasks(enableLoading = false) {
       const isManuallyOverridden = extra?.isManuallyOverridden || false
       const { isManuallyOverridden: _, ignoredPhrases = [], ...cleanExtra } = extra || {}
       
-      const parsed = parseTaskInput(title, isManuallyOverridden, ignoredPhrases)
+      const projects = useAppStore.getState().projects
+      const knownProjectNames = projects.map(p => p.name)
+      const parsed = parseTaskInput(title, isManuallyOverridden, ignoredPhrases, knownProjectNames)
       const currentTasks = useAppStore.getState().tasks
       const calculatedSortOrder = currentTasks.length > 0 ? Math.max(...currentTasks.map(t => t.sort_order ?? 0)) + 1000 : 1000
+
+      const notesParts: string[] = []
+      if (cleanExtra.notes) notesParts.push(cleanExtra.notes)
+      if (parsed.labels.length) notesParts.push(`Tags: ${parsed.labels.map(l => '#' + l).join(' ')}`)
+      if (parsed.energy_tag) notesParts.push(`Energy: ${parsed.energy_tag}`)
+      if (parsed.location) notesParts.push(`Location: @${parsed.location}`)
+      if (parsed.reminder) notesParts.push(`Reminder: ${parsed.reminder}`)
+      const combinedNotes = notesParts.join('\n')
 
       const input: CreateTaskInput = {
         title: parsed.title,
         due_date: parsed.due_date,
         due_time: parsed.due_time,
         priority: parsed.priority,
+        recurrence: parsed.recurrence,
+        time_estimate_mins: parsed.time_estimate_mins || cleanExtra.time_estimate_mins || 0,
+        notes: combinedNotes,
         sort_order: calculatedSortOrder,
         ...cleanExtra
       }
@@ -311,7 +443,6 @@ export function useTasks(enableLoading = false) {
       const selectedProjectId = useAppStore.getState().selectedProjectId
 
       if (parsed.projectTag) {
-        const { projects } = useAppStore.getState()
         const project = projects.find(p => p.name.toLowerCase() === parsed.projectTag!.toLowerCase())
         if (project) {
           input.project_id = project.id
@@ -341,7 +472,10 @@ export function useTasks(enableLoading = false) {
         time_logged_mins: input.time_logged_mins || 0,
         completed_at: null,
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
+        plan_when: input.plan_when || null,
+        plan_where: input.plan_where || null,
+        plan_how: input.plan_how || null
       }
 
       // Optimistic update
@@ -405,6 +539,37 @@ export function useTasks(enableLoading = false) {
       removeTask(id)
       const completedTask = { ...taskToComplete, status: 'done' as const, completed_at: new Date().toISOString() }
       addCompletedTask(completedTask)
+
+      // Trigger visual celebration strictly as a side-effect
+      const celebType = Math.random() < 0.5 ? 'confetti' : 'balloons'
+      useCelebrationStore.getState().triggerCelebration(celebType)
+
+      // Handle recurrence if configured
+      if (taskToComplete.recurrence) {
+        try {
+          const today = new Date()
+          const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+          const nextDate = getNextOccurrenceDate(taskToComplete.due_date || todayStr, taskToComplete.recurrence)
+          const nextTaskInput: CreateTaskInput = {
+            title: taskToComplete.title,
+            notes: taskToComplete.notes || '',
+            project_id: taskToComplete.project_id || undefined,
+            priority: taskToComplete.priority || 0,
+            due_date: nextDate,
+            due_time: taskToComplete.due_time || undefined,
+            recurrence: taskToComplete.recurrence,
+            time_estimate_mins: taskToComplete.time_estimate_mins || 0,
+            plan_when: taskToComplete.plan_when || undefined,
+            plan_where: taskToComplete.plan_where || undefined,
+            plan_how: taskToComplete.plan_how || undefined
+          }
+          createTask(nextTaskInput.title, nextTaskInput).catch(err => {
+            console.error('Failed to automatically schedule next recurring iteration:', err)
+          })
+        } catch (recErr) {
+          console.error('Error parsing recurrence rule:', recErr)
+        }
+      }
 
       if (!window.electronAPI) {
         return
@@ -485,12 +650,12 @@ export function useTasks(enableLoading = false) {
       incrementTasksRevision()
     } catch (err: any) {
       // Revert on failure
-      setTasks(previousTasks)
-      setCompletedTasks(previousCompleted)
+      setTasksForView(targetViewKey, previousTasks)
+      setCompletedTasksForView(targetViewKey, previousCompleted)
       setDeletedTasks(previousDeleted)
       setError(err.message || 'Failed to delete task')
     }
-  }, [removeTask, setDeletedTasks, incrementTasksRevision, setTasks, setCompletedTasks, setError])
+  }, [removeTask, setDeletedTasks, incrementTasksRevision, setTasksForView, setCompletedTasksForView, setError, targetViewKey])
 
   const purgeDeletedTasks = useCallback(async (): Promise<void> => {
     const { deletedTasks } = useAppStore.getState()
@@ -522,7 +687,7 @@ export function useTasks(enableLoading = false) {
     })
   }, [reorderStoreTasks, setError])
 
-  const startSession = useCallback(async (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }): Promise<any> => {
+  const startSession = useCallback(async (payload: string | { taskId?: string | null; projectId?: string | null; targetDurationMins?: number; targetBreakDurationMins?: number }): Promise<any> => {
     const isString = typeof payload === 'string'
     const trackingId = isString ? payload : (payload.taskId || payload.projectId || 'project-session')
     const trackingTaskId = isString ? payload : (payload.taskId || null)

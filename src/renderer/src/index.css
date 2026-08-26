@@ -16,6 +16,12 @@
   --color-muted-foreground: var(--text-secondary);
   --color-destructive: var(--color-overdue);
   --color-destructive-foreground: #ffffff;
+  
+  /* Custom interim zinc shades for design aesthetics */
+  --color-zinc-850: #202023;
+  --color-zinc-750: #333338;
+  --color-zinc-650: #4f4f56;
+  --color-zinc-450: #888893;
 }
 
 :root {
@@ -33,7 +39,43 @@
   --color-overdue: #ef4444;
   --color-warning: #f59e0b;
   --color-success: #22c55e;
+
+  /* Typography Scale Token System */
+  --text-page-title: 34px;
+  --text-section-title: 17px;
+  --text-body: 17px;
+  --text-secondary: 15px;
+  --text-caption: 13px;
+  --text-placeholder: 17px;
+
+  /* Spacing Scale Tokens (Base Unit = 8px) */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  /* Target Size Tokens */
+  --target-sm: 24px;
+  --target-md: 40px;
+  --target-lg: 44px;
+
+  /* Semantic Dark-Mode Color & Contrast Tokens */
+  --color-text-primary: #ffffff;
+  --color-text-secondary: rgba(255, 255, 255, 0.7);
+  --color-text-caption: rgba(255, 255, 255, 0.6);
+  --color-text-placeholder: rgba(255, 255, 255, 0.3);
+  --color-surface-primary: #18181b;
+  --color-surface-elevated: #27272a;
+  --color-border-default: rgba(63, 63, 70, 0.5);
+  --color-focus-ring: #c084fc;
 }
+
+/* 
+  ACCESSIBILITY GUARANTEE: Never encode meaning through color alone.
+  Every status indicator using color must also have a label, icon, or shape indicator.
+*/
 
 html, body, #root {
   height: 100vh;
@@ -87,5 +129,106 @@ input, textarea {
 .no-drag {
   -webkit-app-region: no-drag;
 }
+
+/* ==========================================
+   WCAG 2.2 AA Keyboard Focus Accessibility
+   ========================================== */
+
+/* Universal Focus Outline for Keyboard Tab Navigation */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible,
+[role="tab"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[tabindex]:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px #18181b, 0 0 0 4px #c084fc !important;
+}
+
+/* Exclude Raw/Redundant Ring Outlines during Standard Mouse Clicking */
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+input:focus:not(:focus-visible),
+select:focus:not(:focus-visible),
+textarea:focus:not(:focus-visible),
+[role="button"]:focus:not(:focus-visible),
+[role="tab"]:focus:not(:focus-visible),
+[role="menuitem"]:focus:not(:focus-visible),
+[tabindex]:focus:not(:focus-visible) {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* ==========================================
+   Semantic Typography Utility Classes
+   ========================================== */
+.text-page-title {
+  font-size: var(--text-page-title);
+  @apply font-bold;
+}
+
+.text-section-title {
+  font-size: var(--text-section-title);
+  @apply font-semibold;
+}
+
+.text-body {
+  font-size: var(--text-body);
+  @apply font-normal;
+}
+
+.text-secondary {
+  font-size: var(--text-secondary);
+  @apply font-normal text-white/70;
+}
+
+.text-caption {
+  font-size: var(--text-caption);
+  @apply font-normal text-white/60;
+}
+
+.text-placeholder {
+  font-size: var(--text-placeholder);
+  @apply font-normal text-white/30;
+}
+
+/* ==========================================
+   Semantic Spacing & Target Utility Classes
+   ========================================== */
+.target-sm {
+  min-width: var(--target-sm);
+  min-height: var(--target-sm);
+}
+
+.target-md {
+  min-width: var(--target-md);
+  min-height: var(--target-md);
+}
+
+.target-lg {
+  min-width: var(--target-lg);
+  min-height: var(--target-lg);
+}
+
+.destructive-gap {
+  margin-left: var(--space-4);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.view-container {
+  contain: layout style;
+}
+
+
+
 
 

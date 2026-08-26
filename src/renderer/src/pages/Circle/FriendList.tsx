@@ -104,7 +104,7 @@ export const FriendList: React.FC<FriendListProps> = ({
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <AnimatePresence mode="popLayout">
             {sortedItems.map((friend) => {
               const isMyCard = myStats ? friend.friend_username === myStats.friend_username : false

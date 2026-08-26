@@ -58,44 +58,54 @@ export function updateHabit(input: UpdateHabitInput): Habit {
 
 export function deleteHabit(id: string): void {
   const db = getDb()
-  db.prepare('DELETE FROM habit_logs WHERE habit_id = ?').run(id)
-  db.prepare('DELETE FROM habits WHERE id = ?').run(id)
+  const runTx = db.transaction(() => {
+    db.prepare('DELETE FROM habit_logs WHERE habit_id = ?').run(id)
+    db.prepare('DELETE FROM habits WHERE id = ?').run(id)
+  })
+  runTx()
 }
 
 export function checkInHabit(habitId: string, dateStr: string): HabitLog {
   const db = getDb()
   
-  // Check if log already exists for this date to support idempotency
-  const existStmt = db.prepare('SELECT * FROM habit_logs WHERE habit_id = ? AND date = ?')
-  const existing = existStmt.get(habitId, dateStr) as HabitLog | undefined
-  if (existing) {
-    return existing
-  }
+  const runTx = db.transaction(() => {
+    // Check if log already exists for this date to support idempotency
+    const existStmt = db.prepare('SELECT * FROM habit_logs WHERE habit_id = ? AND date = ?')
+    const existing = existStmt.get(habitId, dateStr) as HabitLog | undefined
+    if (existing) {
+      return existing
+    }
 
-  const logId = nanoid(8)
-  const stmt = db.prepare(`
-    INSERT INTO habit_logs (id, habit_id, date)
-    VALUES (@id, @habit_id, @date)
-  `)
-  stmt.run({
-    id: logId,
-    habit_id: habitId,
-    date: dateStr
+    const logId = nanoid(8)
+    const stmt = db.prepare(`
+      INSERT INTO habit_logs (id, habit_id, date)
+      VALUES (@id, @habit_id, @date)
+    `)
+    stmt.run({
+      id: logId,
+      habit_id: habitId,
+      date: dateStr
+    })
+
+    // Recalculate streak after checking in
+    recalculateStreak(db, habitId)
+
+    return { id: logId, habit_id: habitId, date: dateStr, created_at: new Date().toISOString() }
   })
 
-  // Recalculate streak after checking in
-  recalculateStreak(db, habitId)
-
-  return { id: logId, habit_id: habitId, date: dateStr, created_at: new Date().toISOString() }
+  return runTx() as HabitLog
 }
 
 export function uncheckInHabit(habitId: string, dateStr: string): void {
   const db = getDb()
-  const stmt = db.prepare('DELETE FROM habit_logs WHERE habit_id = ? AND date = ?')
-  stmt.run(habitId, dateStr)
+  const runTx = db.transaction(() => {
+    const stmt = db.prepare('DELETE FROM habit_logs WHERE habit_id = ? AND date = ?')
+    stmt.run(habitId, dateStr)
 
-  // Recalculate streak after unchecking
-  recalculateStreak(db, habitId)
+    // Recalculate streak after unchecking
+    recalculateStreak(db, habitId)
+  })
+  runTx()
 }
 
 export function getHabitLogs(habitId?: string): HabitLog[] {

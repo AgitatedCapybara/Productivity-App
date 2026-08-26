@@ -1,11 +1,15 @@
 // src/renderer/src/components/projects/ProjectEditModal.tsx
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Plus, X, FolderKanban, Trash2, Image as ImageIcon, Camera } from 'lucide-react'
+import { motion, AnimatePresence } from 'motion/react'
 import { cn } from '../../lib/utils'
 import { useProjects } from '../../hooks/useProjects'
 import { useAppStore } from '../../store/useAppStore'
 import type { Project } from '../../types'
 import { CircularCropper } from '../CircularCropper'
+import { dialogTransition } from '../../lib/motion-tokens'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
+import { useSafeClickOutside } from '../../hooks/useSafeClickOutside'
 
 interface ProjectEditModalProps {
   isOpen: boolean
@@ -42,6 +46,35 @@ export function ProjectEditModal({ isOpen, onClose, initialEditProjectId }: Proj
   const [isCropping, setIsCropping] = useState(false)
   const [deleteConfirm, setDeleteConfirm] = useState(false)
 
+  const containerRef = useModalFocusTrap<HTMLDivElement>({ isOpen, onClose })
+
+  const isProjectFormDirty = useMemo(() => {
+    if (screen !== 'editor') return false
+    if (editingProject) {
+      return (
+        name !== editingProject.name ||
+        color !== editingProject.color ||
+        (isCustomImage && rawImage ? rawImage : 'folder') !== (editingProject.icon || 'folder')
+      )
+    } else {
+      return (
+        name !== '' ||
+        color !== '#6366f1' ||
+        isCustomImage !== false
+      )
+    }
+  }, [screen, editingProject, name, color, isCustomImage, rawImage])
+
+  const {
+    shakeKey: projectShakeKey,
+    isFlashing: projectIsFlashing
+  } = useSafeClickOutside({
+    isOpen,
+    onClose,
+    isDirty: isProjectFormDirty,
+    externalRef: containerRef
+  })
+
   // Handles initialization
   useEffect(() => {
     if (isOpen) {
@@ -63,8 +96,6 @@ export function ProjectEditModal({ isOpen, onClose, initialEditProjectId }: Proj
       setDeleteConfirm(false)
     }
   }, [isOpen, initialEditProjectId, projects])
-
-  if (!isOpen) return null
 
   const handleStartCreate = () => {
     setEditingProject(null)
@@ -151,29 +182,56 @@ export function ProjectEditModal({ isOpen, onClose, initialEditProjectId }: Proj
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[6px] flex items-center justify-center p-4 animate-fade-in" id="project-edit-modal-backdrop">
-      <div 
-        className="glass w-full max-w-lg rounded-2xl border border-zinc-805 p-6 flex flex-col max-h-[90vh] text-zinc-100 overflow-y-auto custom-scrollbar shadow-2xl"
-        id="project-edit-modal-card"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Modal Top Header */}
-        <header className="flex items-center justify-between border-b border-zinc-900 pb-3.5 mb-5 select-none" id="project-edit-modal-header">
-          <div className="flex items-center gap-2.5">
-            <FolderKanban className="w-5 h-5 text-indigo-400" />
-            <h2 className="text-sm font-semibold tracking-wide text-zinc-100 HeaderText">
-              {screen === 'list' ? 'Manage Projects' : editingProject ? `Configure Project: ${editingProject.name}` : 'Create New Project'}
-            </h2>
-          </div>
-          <button 
-            type="button" 
-            onClick={onClose}
-            className="w-7 h-7 hover:bg-zinc-900 border border-zinc-900 hover:border-zinc-800 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-all cursor-pointer"
-            title="Close panel"
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={dialogTransition}
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-[6px] flex items-center justify-center p-4"
+          id="project-edit-modal-backdrop"
+        >
+          <motion.div 
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={projectShakeKey > 0 ? {
+              x: [0, -6, 6, -6, 6, -4, 4, 0],
+              opacity: 1,
+              scale: 1
+            } : { scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            transition={dialogTransition}
+            className={cn(
+              "glass w-full max-w-lg rounded-2xl border p-6 flex flex-col max-h-[90vh] text-zinc-100 overflow-y-auto custom-scrollbar shadow-2xl relative outline-none transition-all duration-300",
+              projectIsFlashing
+                ? "border-amber-500/80 shadow-[0_0_15px_rgba(245,158,11,0.25)] ring-2 ring-amber-500/40"
+                : "border-zinc-805"
+            )}
+            id="project-edit-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            ref={containerRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
           >
-            <X size={14} />
-          </button>
-        </header>
+            {/* Modal Top Header */}
+            <header className="flex items-center justify-between border-b border-zinc-900 pb-3.5 mb-5 select-none" id="project-edit-modal-header">
+              <div className="flex items-center gap-2.5">
+                <FolderKanban className="w-5 h-5 text-indigo-400" />
+                <h2 className="text-sm font-semibold tracking-wide text-zinc-100 HeaderText">
+                  {screen === 'list' ? 'Manage Projects' : editingProject ? `Configure Project: ${editingProject.name}` : 'Create New Project'}
+                </h2>
+              </div>
+              <button 
+                type="button" 
+                onClick={onClose}
+                className="w-10 h-10 hover:bg-zinc-900 border border-zinc-900 hover:border-zinc-800 rounded-lg flex items-center justify-center text-zinc-400 hover:text-zinc-200 transition-all cursor-pointer"
+                title="Close panel"
+                aria-label="Close dialog"
+              >
+                <X size={16} />
+              </button>
+            </header>
 
         {/* SCREEN 1: LIST VIEW */}
         {screen === 'list' && (
@@ -248,14 +306,14 @@ export function ProjectEditModal({ isOpen, onClose, initialEditProjectId }: Proj
             ) : (
               <div className="space-y-4">
                 {/* Name */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] uppercase tracking-wider font-bold text-zinc-400">Project Title</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] text-white/60">Project Title</label>
                   <input 
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="e.g. Work, Side Projects, Travel Planner..."
-                    className="px-3.5 py-2.5 bg-zinc-900/60 border border-zinc-850 focus:border-indigo-500/80 rounded-xl text-xs text-zinc-100 placeholder-zinc-620 focus:outline-none focus:ring-1 focus:ring-indigo-500/20 font-medium w-full transition-all"
+                    className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all"
                     maxLength={32}
                   />
                 </div>
@@ -398,7 +456,7 @@ export function ProjectEditModal({ isOpen, onClose, initialEditProjectId }: Proj
                       type="button"
                       onClick={handleDelete}
                       className={cn(
-                        "text-[10px] select-none font-bold uppercase tracking-wider px-3.5 py-2.5 rounded-xl border flex items-center gap-1.5 transition-all cursor-pointer",
+                        "text-[10px] select-none font-bold uppercase tracking-wider px-3.5 min-h-10 min-w-10 rounded-xl border flex items-center justify-center gap-1.5 transition-all cursor-pointer",
                         deleteConfirm 
                           ? "bg-rose-650 hover:bg-rose-600 border-rose-650 hover:border-rose-600 text-rose-50 animate-pulse" 
                           : "bg-zinc-950 border-zinc-900 hover:border-rose-550 hover:text-rose-450 text-zinc-500"
@@ -415,7 +473,7 @@ export function ProjectEditModal({ isOpen, onClose, initialEditProjectId }: Proj
                     <button
                       type="button"
                       onClick={() => setScreen('list')}
-                      className="text-[10px] select-none font-bold uppercase tracking-wider text-zinc-400 hover:text-zinc-200 border border-zinc-900 hover:border-zinc-800 bg-zinc-950/20 hover:bg-zinc-900 px-3.5 py-2.5 rounded-xl transition-all h-9 flex items-center justify-center cursor-pointer"
+                      className="text-[10px] select-none font-bold uppercase tracking-wider text-zinc-400 hover:text-zinc-200 border border-zinc-900 hover:border-zinc-800 bg-zinc-950/20 hover:bg-zinc-900 px-3.5 rounded-xl transition-all h-10 min-w-10 flex items-center justify-center cursor-pointer"
                     >
                       Back List
                     </button>
@@ -423,7 +481,7 @@ export function ProjectEditModal({ isOpen, onClose, initialEditProjectId }: Proj
                       type="button"
                       disabled={!name.trim()}
                       onClick={handleSave}
-                      className="text-[10px] select-none font-bold uppercase tracking-wider bg-indigo-650 hover:bg-indigo-600 active:scale-95 disabled:opacity-50 disabled:pointer-events-none text-indigo-50 px-4 py-2.5 rounded-xl transition-all h-9 flex items-center justify-center cursor-pointer"
+                      className="text-[10px] select-none font-bold uppercase tracking-wider bg-indigo-650 hover:bg-indigo-600 active:scale-95 disabled:opacity-50 disabled:pointer-events-none text-indigo-50 px-4 rounded-xl transition-all h-10 min-w-10 flex items-center justify-center cursor-pointer"
                     >
                       {editingProject ? 'Save Changes' : 'Create Project'}
                     </button>
@@ -433,7 +491,9 @@ export function ProjectEditModal({ isOpen, onClose, initialEditProjectId }: Proj
             )}
           </div>
         )}
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

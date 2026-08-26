@@ -86,10 +86,12 @@ export function createTask(input: CreateTaskInput): Task {
   const stmt = db.prepare(`
     INSERT INTO tasks (
       id, title, notes, project_id, priority, status, due_date, due_time, 
-      recurrence, sort_order, time_estimate_mins, time_logged_mins, completed_at
+      recurrence, sort_order, time_estimate_mins, time_logged_mins, completed_at,
+      plan_when, plan_where, plan_how
     ) VALUES (
       @id, @title, @notes, @project_id, @priority, @status, @due_date, @due_time,
-      @recurrence, @sort_order, @time_estimate_mins, @time_logged_mins, @completed_at
+      @recurrence, @sort_order, @time_estimate_mins, @time_logged_mins, @completed_at,
+      @plan_when, @plan_where, @plan_how
     )
   `)
 
@@ -106,7 +108,10 @@ export function createTask(input: CreateTaskInput): Task {
     sort_order,
     time_estimate_mins: input.time_estimate_mins ?? 0,
     time_logged_mins: input.time_logged_mins ?? 0,
-    completed_at: input.completed_at ?? null
+    completed_at: input.completed_at ?? null,
+    plan_when: input.plan_when ?? null,
+    plan_where: input.plan_where ?? null,
+    plan_how: input.plan_how ?? null
   })
 
   const getStmt = db.prepare('SELECT * FROM tasks WHERE id = ?')

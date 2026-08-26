@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useHabits } from '../hooks/useHabits'
 import { useProjects } from '../hooks/useProjects'
+import { cn } from '../lib/utils'
 import { 
   Flame, 
   Pause, 
@@ -36,6 +37,7 @@ export function HabitsView() {
   const [newHabitName, setNewHabitName] = useState('')
   const [newHabitProject, setNewHabitProject] = useState<string>('')
   const [newHabitSessionLink, setNewHabitSessionLink] = useState(false)
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null)
 
   // Filters
   const [projectFilter, setProjectFilter] = useState<string | null>(null)
@@ -85,7 +87,7 @@ export function HabitsView() {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 sm:p-8 bg-[#09090b] text-zinc-100" id="habits-view-container">
+    <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 sm:p-8 bg-[#09090b] text-zinc-100 view-container" id="habits-view-container">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
         <div>
@@ -94,7 +96,7 @@ export function HabitsView() {
             Habit Tracker
           </h1>
           <p className="text-xs text-zinc-400 mt-1">
-            Build good habits and stop bad ones! Check in daily and watch yourself grow.
+            Build discipline, link focus sessions, and skip streaks on vacation without breaking them.
           </p>
         </div>
 
@@ -126,7 +128,7 @@ export function HabitsView() {
                 <Plus size={12} /> New Habit Details
               </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 {/* Name */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Habit Name</label>
@@ -273,7 +275,7 @@ export function HabitsView() {
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6" id="habits-grid">
+        <div className="grid grid-cols-2 gap-6" id="habits-grid">
           {filteredHabits.map((habit) => {
             const mappedProject = projects.find(p => p.id === habit.project_id)
             const habitLogs = logs.filter(l => l.habit_id === habit.id)
@@ -503,18 +505,31 @@ export function HabitsView() {
                     </button>
                   </div>
 
-                  {/* Delete Button */}
+                  {/* Delete Button with inline confirmation */}
                   <button
                     onClick={() => {
-                      if (confirm(`Are you sure you want to delete the habit "${habit.name}"? This deletes all history logs and reset streaks.`)) {
+                      if (confirmingDeleteId !== habit.id) {
+                        setConfirmingDeleteId(habit.id)
+                      } else {
                         deleteHabit(habit.id)
+                        setConfirmingDeleteId(null)
                       }
                     }}
-                    className="p-1.5 text-zinc-650 hover:text-red-400 hover:bg-red-500/5 rounded-lg transition-colors cursor-pointer"
-                    title="Delete Habit"
+                    onMouseLeave={() => setConfirmingDeleteId(null)}
+                    className={cn(
+                      "w-10 h-10 flex flex-shrink-0 items-center justify-center rounded-lg transition-all cursor-pointer ml-4",
+                      confirmingDeleteId === habit.id
+                        ? "bg-rose-950/40 border border-rose-500/30 text-rose-400 animate-pulse text-[9px] font-semibold p-1"
+                        : "text-zinc-650 hover:text-red-400 hover:bg-red-500/5"
+                    )}
+                    title={confirmingDeleteId === habit.id ? "Click again to confirm delete" : "Delete Habit"}
                     id={`habit-delete-btn-${habit.id}`}
                   >
-                    <Trash2 size={13} />
+                    {confirmingDeleteId === habit.id ? (
+                      <span>Confirm?</span>
+                    ) : (
+                      <Trash2 size={13} />
+                    )}
                   </button>
                 </div>
               </div>
@@ -529,7 +544,7 @@ export function HabitsView() {
         <div className="space-y-1">
           <p className="text-xs font-semibold text-zinc-300">Habit Streaks & Pauses</p>
           <p className="text-[11px] text-zinc-500 leading-relaxed">
-            Streaks are kept alive if a habit is checked-in without missing scheduled days. Enabling "Vacation Pause" freezes the streak at its last check-in state, keeping you from losing the streak and letting you resume building habits easily.
+            Streaks are kept alive if a habit is checked-in **today** or **yesterday**. Enabling **Vacation Pause** freezes the streak at its last check-in state, completely preventing automatic breakages due to travel or rest periods, and unpausing seamlessly resumes where you left off.
           </p>
         </div>
       </div>

@@ -20,7 +20,9 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
-          widget: resolve(__dirname, 'src/preload/widget.ts')
+          widget: resolve(__dirname, 'src/preload/widget.ts'),
+          capture: resolve(__dirname, 'src/preload/capture.ts'),
+          overlay: resolve(__dirname, 'src/preload/overlay.ts')
         }
       }
     }
@@ -37,7 +39,9 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'src/renderer/index.html'),
-          widget: resolve(__dirname, 'src/renderer/widget.html')
+          widget: resolve(__dirname, 'src/renderer/widget.html'),
+          capture: resolve(__dirname, 'src/renderer/capture.html'),
+          overlay: resolve(__dirname, 'src/renderer/overlay.html')
         }
       }
     },

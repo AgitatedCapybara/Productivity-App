@@ -19,6 +19,7 @@ import {
   PlusCircle
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
+import { useSafeClickOutside } from '../hooks/useSafeClickOutside'
 
 type CalendarViewMode = 'day' | 'workweek' | 'week' | 'month' | 'agenda'
 
@@ -71,6 +72,72 @@ export function CalendarView() {
   const [evtRecurrence, setEvtRecurrence] = useState<string>('none')
   const [customWeeklyDays, setCustomWeeklyDays] = useState<number[]>([1])
   const [customMonthlyDays, setCustomMonthlyDays] = useState<number[]>([1])
+
+  const [initialFormState, setInitialFormState] = useState<{
+    title: string
+    desc: string
+    date: string
+    startTime: string
+    endTime: string
+    project: string
+    recurrence: string
+    weeklyDays: number[]
+    monthlyDays: number[]
+  } | null>(null)
+
+  useEffect(() => {
+    if (showAddModal) {
+      setInitialFormState({
+        title: evtTitle,
+        desc: evtDesc,
+        date: evtDate,
+        startTime: evtStartTime,
+        endTime: evtEndTime,
+        project: evtProject,
+        recurrence: evtRecurrence,
+        weeklyDays: [...customWeeklyDays],
+        monthlyDays: [...customMonthlyDays]
+      })
+    } else {
+      setInitialFormState(null)
+    }
+  }, [showAddModal])
+
+  const isCalendarFormDirty = useMemo(() => {
+    if (!initialFormState) return false
+    return (
+      evtTitle !== initialFormState.title ||
+      evtDesc !== initialFormState.desc ||
+      evtDate !== initialFormState.date ||
+      evtStartTime !== initialFormState.startTime ||
+      evtEndTime !== initialFormState.endTime ||
+      evtProject !== initialFormState.project ||
+      evtRecurrence !== initialFormState.recurrence ||
+      JSON.stringify(customWeeklyDays) !== JSON.stringify(initialFormState.weeklyDays) ||
+      JSON.stringify(customMonthlyDays) !== JSON.stringify(initialFormState.monthlyDays)
+    )
+  }, [
+    initialFormState,
+    evtTitle,
+    evtDesc,
+    evtDate,
+    evtStartTime,
+    evtEndTime,
+    evtProject,
+    evtRecurrence,
+    customWeeklyDays,
+    customMonthlyDays
+  ])
+
+  const {
+    containerRef: addEventRef,
+    shakeKey: addEventShakeKey,
+    isFlashing: addEventIsFlashing
+  } = useSafeClickOutside({
+    isOpen: showAddModal,
+    isDirty: isCalendarFormDirty,
+    onClose: () => handleCloseAddModal()
+  })
 
   const handleCloseAddModal = () => {
     setShowAddModal(false)
@@ -433,7 +500,7 @@ export function CalendarView() {
   const hours = Array.from({ length: 24 }).map((_, i) => i)
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-[#09090b] text-zinc-100 overflow-hidden relative" id="calendar-workspace">
+    <div className="flex-1 flex flex-col h-full bg-[#09090b] text-zinc-100 overflow-hidden relative view-container" id="calendar-workspace">
       {/* Calendar Tab Heading Header */}
       <header className="p-5 sm:p-6 border-b border-zinc-900 bg-zinc-950/40 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sticky top-0 z-15 backdrop-blur-xl shrink-0">
         <div className="flex items-center gap-3">
@@ -442,11 +509,11 @@ export function CalendarView() {
           </div>
           <div>
             <h1 className="text-sm font-bold text-zinc-100 tracking-wide flex items-center gap-1.5 leading-none">
-              Calendar
+              Developer Calendar
               <span className="text-[10px] text-purple-400 font-extrabold uppercase bg-purple-500/10 border border-purple-500/10 px-1.5 py-0.5 rounded-full">Pro</span>
             </h1>
             <p className="text-[10px] text-zinc-500 mt-1 font-medium">
-              Schedule your plans and stay in control of your day!
+              Unified appointments, routine habit check-ins, and task deadlines.
             </p>
           </div>
         </div>
@@ -569,10 +636,20 @@ export function CalendarView() {
         {showAddModal && (
           <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50 backdrop-blur-sm" id="cal-add-modal">
             <motion.div
+              ref={addEventRef}
               initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
+              animate={addEventShakeKey > 0 ? {
+                x: [0, -6, 6, -6, 6, -4, 4, 0],
+                opacity: 1,
+                scale: 1
+              } : { scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-zinc-950 border border-zinc-850 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-5"
+              className={cn(
+                "bg-zinc-950 border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl p-5 transition-all duration-300",
+                addEventIsFlashing
+                  ? "border-amber-500/80 shadow-[0_0_15px_rgba(245,158,11,0.25)] ring-2 ring-amber-500/40"
+                  : "border-zinc-850"
+              )}
             >
               <div className="flex items-center justify-between pb-3.5 border-b border-zinc-900">
                 <h2 className="text-sm font-bold text-zinc-150 flex items-center gap-1.5">
@@ -589,36 +666,36 @@ export function CalendarView() {
               </div>
 
               <form onSubmit={handleSaveEvent} className="mt-4 flex flex-col gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Event Name</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] text-white/60">Event Name</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Sync with product design squad"
                     value={evtTitle}
                     onChange={(e) => setEvtTitle(e.target.value)}
-                    className="px-3 py-2 bg-zinc-900/60 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/80 font-medium"
+                    className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all"
                   />
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Description (Notes)</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] text-white/60">Description (Notes)</label>
                   <textarea
                     placeholder="Add meeting agenda notes, Zoom links or files..."
                     rows={2}
                     value={evtDesc}
                     onChange={(e) => setEvtDesc(e.target.value)}
-                    className="px-3 py-2 bg-zinc-900/60 border border-zinc-800 rounded-xl text-xs text-zinc-100 placeholder:text-zinc-600 focus:outline-none focus:border-purple-500/80 resize-none font-medium text-justify"
+                    className="text-[17px] p-2 min-h-16 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all resize-none"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Category Project</label>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[13px] text-white/60">Category Project</label>
                     <select
                       value={evtProject}
                       onChange={(e) => setEvtProject(e.target.value)}
-                      className="px-2 py-2 bg-zinc-900 border border-zinc-800 rounded-xl text-xs text-zinc-350 focus:outline-none"
+                      className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all cursor-pointer"
                     >
                       <option value="">Independent (No Project)</option>
                       {projects.map((p) => (
@@ -720,36 +797,36 @@ export function CalendarView() {
                   )}
                 </div>
 
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Occurrence Date</label>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[13px] text-white/60">Occurrence Date</label>
                   <input
                     type="date"
                     required
                     value={evtDate}
                     onChange={(e) => setEvtDate(e.target.value)}
-                    className="px-3 py-2 bg-zinc-900/60 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none"
+                    className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all color-scheme-dark"
                   />
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Start Time</label>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[13px] text-white/60">Start Time</label>
                     <input
                       type="time"
                       required
                       value={evtStartTime}
                       onChange={(e) => setEvtStartTime(e.target.value)}
-                      className="px-3 py-2 bg-zinc-900/60 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none"
+                      className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all color-scheme-dark"
                     />
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">End Time</label>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[13px] text-white/60">End Time</label>
                     <input
                       type="time"
                       required
                       value={evtEndTime}
                       onChange={(e) => setEvtEndTime(e.target.value)}
-                      className="px-3 py-2 bg-zinc-900/60 border border-zinc-800 rounded-xl text-xs text-zinc-100 focus:outline-none"
+                      className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all color-scheme-dark"
                     />
                   </div>
                 </div>

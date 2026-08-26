@@ -120,8 +120,8 @@ export function TaskList({ tasks }: TaskListProps) {
       onDragCancel={handleDragCancel}
     >
       <SortableContext items={uniqueTasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col gap-0.5 relative z-10 w-full mb-4">
-          <AnimatePresence initial={false}>
+        <div className="flex flex-col gap-2 relative z-10 w-full mb-4">
+          <AnimatePresence initial={false} mode="popLayout">
             {uniqueTasks.map(task => (
               <TaskItem
                 key={task.client_id || task.id}

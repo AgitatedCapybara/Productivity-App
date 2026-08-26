@@ -293,4 +293,333 @@ export function runMigrations(db: Database): void {
     db.exec('PRAGMA user_version = 13')
     user_version = 13
   }
+
+  if (user_version < 14) {
+    db.exec(`
+      -- New performance indexes
+      CREATE INDEX IF NOT EXISTS idx_tasks_proj_status_date_sort ON tasks(project_id, status, due_date, sort_order);
+      CREATE INDEX IF NOT EXISTS idx_tasks_due_date_active ON tasks(due_date) WHERE status NOT IN ('done', 'deleted');
+      CREATE INDEX IF NOT EXISTS idx_habit_logs_habit_id_date ON habit_logs(habit_id, date);
+      CREATE INDEX IF NOT EXISTS idx_sessions_started_ended ON sessions(started_at, ended_at);
+      CREATE INDEX IF NOT EXISTS idx_events_start_end_at ON calendar_events(start_at, end_at);
+
+      -- FTS5 Virtual Table for Search
+      CREATE VIRTUAL TABLE IF NOT EXISTS search_index USING fts5(
+        id UNINDEXED, 
+        type UNINDEXED, 
+        title, 
+        content
+      );
+
+      -- Triggers for Projects
+      CREATE TRIGGER IF NOT EXISTS trg_projects_insert AFTER INSERT ON projects BEGIN
+        INSERT INTO search_index (id, type, title, content) VALUES (new.id, 'project', new.name, '');
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_projects_update AFTER UPDATE ON projects BEGIN
+        UPDATE search_index SET title = new.name, content = '' WHERE id = new.id AND type = 'project';
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_projects_delete AFTER DELETE ON projects BEGIN
+        DELETE FROM search_index WHERE id = old.id AND type = 'project';
+      END;
+
+      -- Triggers for Tasks
+      CREATE TRIGGER IF NOT EXISTS trg_tasks_insert AFTER INSERT ON tasks BEGIN
+        INSERT INTO search_index (id, type, title, content) VALUES (new.id, 'task', new.title, COALESCE(new.notes, ''));
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_tasks_update AFTER UPDATE ON tasks BEGIN
+        UPDATE search_index SET title = new.title, content = COALESCE(new.notes, '') WHERE id = new.id AND type = 'task';
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_tasks_delete AFTER DELETE ON tasks BEGIN
+        DELETE FROM search_index WHERE id = old.id AND type = 'task';
+      END;
+
+      -- Triggers for Calendar Events
+      CREATE TRIGGER IF NOT EXISTS trg_events_insert AFTER INSERT ON calendar_events BEGIN
+        INSERT INTO search_index (id, type, title, content) VALUES (new.id, 'event', new.title, COALESCE(new.description, ''));
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_events_update AFTER UPDATE ON calendar_events BEGIN
+        UPDATE search_index SET title = new.title, content = COALESCE(new.description, '') WHERE id = new.id AND type = 'event';
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_events_delete AFTER DELETE ON calendar_events BEGIN
+        DELETE FROM search_index WHERE id = old.id AND type = 'event';
+      END;
+
+      -- Populate FTS5 Index from existing rows
+      DELETE FROM search_index;
+
+      INSERT OR IGNORE INTO search_index (id, type, title, content)
+      SELECT id, 'project', name, '' FROM projects;
+
+      INSERT OR IGNORE INTO search_index (id, type, title, content)
+      SELECT id, 'task', title, COALESCE(notes, '') FROM tasks;
+
+      INSERT OR IGNORE INTO search_index (id, type, title, content)
+      SELECT id, 'event', title, COALESCE(description, '') FROM calendar_events;
+    `)
+    db.exec('PRAGMA user_version = 14')
+    user_version = 14
+  }
+
+  if (user_version < 15) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS task_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        last_used_at TEXT,
+        use_count INTEGER DEFAULT 0
+      );
+    `)
+    db.exec('PRAGMA user_version = 15')
+    user_version = 15
+  }
+
+  if (user_version < 16) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS suggestions (
+        id TEXT PRIMARY KEY,
+        task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+        suggested_start TEXT NOT NULL,
+        suggested_end TEXT NOT NULL,
+        rationale TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        status TEXT NOT NULL CHECK(status IN ('pending', 'accepted', 'declined', 'snoozed')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        resolved_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS scheduling_preferences (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_suggestions_task_id ON suggestions(task_id);
+      CREATE INDEX IF NOT EXISTS idx_suggestions_status ON suggestions(status);
+    `)
+
+    // Seed default preferences
+    const seedPref = db.prepare(`
+      INSERT OR IGNORE INTO scheduling_preferences (key, value)
+      VALUES (?, ?)
+    `)
+    seedPref.run('work_hours_start', '09:00')
+    seedPref.run('work_hours_end', '17:00')
+    seedPref.run('deep_work_window_start', '09:00')
+    seedPref.run('deep_work_window_end', '12:00')
+    seedPref.run('no_meeting_blocks', '[]')
+    seedPref.run('ignore_energy_patterns', 'false')
+    seedPref.run('scheduler.nudges.enabled', 'true')
+
+    db.exec('PRAGMA user_version = 16')
+    user_version = 16
+  }
+
+  if (user_version < 17) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS ritual_entries (
+        id TEXT PRIMARY KEY,
+        type TEXT NOT NULL CHECK(type IN ('morning', 'evening')),
+        date TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(type, date)
+      );
+    `)
+
+    // Seed default settings/preferences for rituals
+    const seedPref = db.prepare(`
+      INSERT OR IGNORE INTO scheduling_preferences (key, value)
+      VALUES (?, ?)
+    `)
+    seedPref.run('rituals.morning.enabled', 'true')
+    seedPref.run('rituals.morning.autotrigger', 'true')
+    seedPref.run('rituals.evening.enabled', 'true')
+    seedPref.run('rituals.evening.autotrigger', 'true')
+    seedPref.run('rituals.evening.time', '18:00')
+    seedPref.run('rituals.capacity.working_hours', '8')
+    seedPref.run('rituals.capacity.break_buffer', '1.5')
+    seedPref.run('rituals.capacity.default_duration', '30')
+    seedPref.run('rituals.quiet_mode_until', '')
+
+    db.exec('PRAGMA user_version = 17')
+    user_version = 17
+  }
+
+  if (user_version < 18) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS notes (
+        id TEXT PRIMARY KEY,
+        parent_type TEXT NOT NULL CHECK(parent_type IN ('task', 'project', 'session', 'standalone')),
+        parent_id TEXT,
+        title TEXT NOT NULL,
+        body_md TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+        pinned INTEGER DEFAULT 0,
+        archived INTEGER DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS note_links (
+        id TEXT PRIMARY KEY,
+        source_note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+        target_note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(source_note_id, target_note_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_notes_parent ON notes(parent_type, parent_id);
+      CREATE INDEX IF NOT EXISTS idx_note_links_source ON note_links(source_note_id);
+      CREATE INDEX IF NOT EXISTS idx_note_links_target ON note_links(target_note_id);
+
+      -- Triggers for Notes Search Index
+      CREATE TRIGGER IF NOT EXISTS trg_notes_insert AFTER INSERT ON notes BEGIN
+        INSERT INTO search_index (id, type, title, content) VALUES (new.id, 'note', new.title, COALESCE(new.body_md, ''));
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_notes_update AFTER UPDATE ON notes BEGIN
+        UPDATE search_index SET title = new.title, content = COALESCE(new.body_md, '') WHERE id = new.id AND type = 'note';
+      END;
+      CREATE TRIGGER IF NOT EXISTS trg_notes_delete AFTER DELETE ON notes BEGIN
+        DELETE FROM search_index WHERE id = old.id AND type = 'note';
+      END;
+    `)
+
+    // Seed default settings for notes
+    const seedPref = db.prepare(`
+      INSERT OR IGNORE INTO scheduling_preferences (key, value)
+      VALUES (?, ?)
+    `)
+    seedPref.run('notes.enabled', 'true')
+
+    db.exec('PRAGMA user_version = 18')
+    user_version = 18
+  }
+
+  if (user_version < 19) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS view_presets (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        filters TEXT, 
+        sort TEXT, 
+        group_by TEXT, 
+        layout TEXT NOT NULL 
+      );
+
+      CREATE TABLE IF NOT EXISTS card_placements (
+        note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+        view_id TEXT NOT NULL REFERENCES view_presets(id) ON DELETE CASCADE,
+        position_x REAL DEFAULT 0,
+        position_y REAL DEFAULT 0,
+        z_index INTEGER DEFAULT 0,
+        PRIMARY KEY (note_id, view_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS actions (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        command TEXT NOT NULL,
+        icon TEXT,
+        context TEXT
+      );
+    `)
+
+    // Check if column card_mode exists on notes
+    try {
+      const columns = db.pragma('table_info(notes)') as Array<{ name: string }> | null | undefined
+      const hasCardMode = Array.isArray(columns) && columns.some(col => col && col.name === 'card_mode')
+      if (!hasCardMode) {
+        db.exec('ALTER TABLE notes ADD COLUMN card_mode INTEGER DEFAULT 0')
+      }
+    } catch (e) {
+      console.warn('Could not add card_mode to notes table:', e)
+    }
+
+    // Check if column pomodoro_count exists on sessions
+    try {
+      const columns = db.pragma('table_info(sessions)') as Array<{ name: string }> | null | undefined
+      const hasPomodoroCount = Array.isArray(columns) && columns.some(col => col && col.name === 'pomodoro_count')
+      if (!hasPomodoroCount) {
+        db.exec('ALTER TABLE sessions ADD COLUMN pomodoro_count INTEGER DEFAULT 0')
+      }
+    } catch (e) {
+      console.warn('Could not add pomodoro_count to sessions table:', e)
+    }
+
+    // Seed default view presets
+    try {
+      const seedView = db.prepare(`
+        INSERT OR IGNORE INTO view_presets (id, name, filters, sort, group_by, layout)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `)
+      seedView.run('preset-kanban', 'Kanban Board', '{}', '[]', 'status', 'kanban')
+      seedView.run('preset-calendar', 'Calendar View', '{}', '[]', '', 'calendar')
+      seedView.run('preset-gallery', 'Gallery View', '{}', '[]', '', 'gallery')
+      seedView.run('preset-timeline', 'Timeline View', '{}', '[]', '', 'timeline')
+      seedView.run('preset-board', 'Spatial Workspace', '{}', '[]', '', 'board')
+    } catch (e) {
+      console.error('Failed to seed default view presets:', e)
+    }
+
+    db.exec('PRAGMA user_version = 19')
+    user_version = 19
+  }
+
+  if (user_version < 20) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id TEXT PRIMARY KEY,
+        action TEXT NOT NULL,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT,
+        timestamp TEXT NOT NULL DEFAULT (datetime('now')),
+        metadata_json TEXT DEFAULT '{}'
+      );
+    `)
+    db.exec('PRAGMA user_version = 20')
+    user_version = 20
+  }
+
+  if (user_version < 21) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS license (
+        id TEXT PRIMARY KEY,
+        tier TEXT NOT NULL CHECK(tier IN ('free', 'pro', 'team_creator', 'team_member')),
+        activation_key TEXT NOT NULL,
+        activated_at TEXT NOT NULL,
+        expires_at TEXT,
+        machine_hash TEXT NOT NULL,
+        offline_grace_until TEXT
+      );
+    `)
+    db.exec('PRAGMA user_version = 21')
+    user_version = 21
+  }
+
+  if (user_version < 22) {
+    db.exec(`
+      ALTER TABLE tasks ADD COLUMN plan_when TEXT;
+      ALTER TABLE tasks ADD COLUMN plan_where TEXT;
+      ALTER TABLE tasks ADD COLUMN plan_how TEXT;
+    `)
+    db.exec('PRAGMA user_version = 22')
+    user_version = 22
+  }
+
+  if (user_version < 23) {
+    db.exec('PRAGMA user_version = 23')
+    user_version = 23
+  }
+
+  if (user_version < 24) {
+    try {
+      db.exec(`
+        ALTER TABLE sessions ADD COLUMN target_break_duration_mins INTEGER DEFAULT 5;
+      `)
+    } catch (e) {
+      console.warn('Could not add target_break_duration_mins to sessions table:', e)
+    }
+    db.exec('PRAGMA user_version = 24')
+    user_version = 24
+  }
 }

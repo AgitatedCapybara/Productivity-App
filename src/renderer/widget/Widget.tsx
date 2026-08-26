@@ -210,6 +210,10 @@ export function Widget() {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
   }
 
+  const targetSeconds = (session?.targetDurationMins || (session as any)?.target_duration_mins || 25) * 60
+  const isOvertime = elapsedSeconds > targetSeconds
+  const displaySeconds = isOvertime ? (elapsedSeconds - targetSeconds) : (targetSeconds - elapsedSeconds)
+
   // Priority indicator helper
   const getPriorityColor = (priority: number) => {
     if (priority === 1) return 'bg-slate-400'
@@ -278,8 +282,8 @@ export function Widget() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="text-xs font-bold font-mono tracking-tight text-emerald-400">
-              {formatTime(elapsedSeconds)}
+            <span className={`text-xs font-bold font-mono tracking-tight ${isOvertime ? 'text-amber-400 animate-pulse' : 'text-emerald-400'}`}>
+              {isOvertime ? '+' : ''}{formatTime(displaySeconds)}
             </span>
             <span className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold font-sans">
               · SELECT RE-FOCUS TARGET
@@ -439,18 +443,26 @@ export function Widget() {
         <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-full border transition-all ${
           session?.status === 'paused' 
             ? 'bg-amber-500/10 border-amber-500/20 text-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.05)]' 
-            : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.05)]'
+            : isOvertime
+              ? 'bg-rose-500/10 border-rose-500/20 text-rose-400 shadow-[0_0_8px_rgba(239,68,68,0.05)] animate-pulse'
+              : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_8px_rgba(16,185,129,0.05)]'
         }`}>
           <span className="relative flex h-1.5 w-1.5 shrink-0">
             {session?.status !== 'paused' && (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400/80 opacity-75"></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                isOvertime ? 'bg-rose-400' : 'bg-emerald-400'
+              }`}></span>
             )}
             <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${
-              session?.status === 'paused' ? 'bg-amber-500' : 'bg-emerald-500'
+              session?.status === 'paused' 
+                ? 'bg-amber-500' 
+                : isOvertime 
+                  ? 'bg-rose-500' 
+                  : 'bg-emerald-500'
             }`}></span>
           </span>
           <span className="font-mono text-[12px] font-bold tracking-tight tabular-nums">
-            {formatTime(elapsedSeconds)}
+            {isOvertime ? '+' : ''}{formatTime(displaySeconds)}
           </span>
         </div>
       </div>

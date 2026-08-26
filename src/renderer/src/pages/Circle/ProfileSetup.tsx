@@ -198,8 +198,8 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({ onProfileCreated }) 
                 )}
               </div>
 
-              <div>
-                <label htmlFor="username" className="block text-xs font-medium text-zinc-300 mb-2 font-sans">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="username" className="text-[13px] text-white/60">
                   Username (must be unique)
                 </label>
                 <input
@@ -210,12 +210,12 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({ onProfileCreated }) 
                   placeholder="e.g. coder_kaylee"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-850 rounded-lg text-zinc-100 text-sm focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-650"
+                  className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all"
                 />
               </div>
 
-              <div>
-                <label htmlFor="displayName" className="block text-xs font-medium text-zinc-300 mb-2 font-sans">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="displayName" className="text-[13px] text-white/60">
                   Display Name (optional)
                 </label>
                 <input
@@ -225,7 +225,7 @@ export const ProfileSetup: React.FC<ProfileSetupProps> = ({ onProfileCreated }) 
                   placeholder="e.g. Kaylee Chen"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full px-3.5 py-2 bg-zinc-950 border border-zinc-850 rounded-lg text-zinc-100 text-sm focus:outline-none focus:border-indigo-500 transition-colors placeholder:text-zinc-650"
+                  className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all"
                 />
               </div>
 

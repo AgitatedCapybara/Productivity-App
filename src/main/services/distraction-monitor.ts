@@ -2,16 +2,24 @@
 import { logDistraction, endDistraction } from '../db/sessions'
 import { getDb } from '../db/database'
 import { getSetting } from '../db/settings'
-import { BrowserWindow, app } from 'electron'
+import { BrowserWindow, app, powerMonitor } from 'electron'
 import { spawn, ChildProcess } from 'child_process'
 import { join } from 'path'
-import { writeFileSync } from 'fs'
+import { writeFileSync, mkdirSync } from 'fs'
+import { toggleSystemDND } from './dnd'
 
 let activeProcess: ChildProcess | null = null
 let currentSessionId: string | null = null
+export let systemPausedSessionId: string | null = null
 let activeDistraction: { id: string; startedAt: number; appKey: string } | null = null
 let switchChecksCount = 0
 let isTrackingSimulated = false
+export let isTrackerDegraded = false
+let spawnOverride: any = null
+
+export function setSpawnOverride(override: any): void {
+  spawnOverride = override
+}
 
 // Simulation timer (if user manually chooses or falls back to simulation)
 let simulationInterval: NodeJS.Timeout | null = null
@@ -121,6 +129,21 @@ export function handleActiveWindowUpdate(windowInfo: { title: string; owner: { n
     appKey
   }
 
+  // Trigger throttled distraction warning notification
+  try {
+    import('../index').then(({ sendThrottledNotification }) => {
+      sendThrottledNotification(
+        'Distraction Warning',
+        `You are currently distracted by "${owner.name || 'an app'}". Focus on your goals!`,
+        false
+      )
+    }).catch(err => {
+      console.error('Failed to send distraction notification:', err)
+    })
+  } catch (err) {
+    console.error('Failed to load sendThrottledNotification:', err)
+  }
+
   // Notify windows of the new live distraction count
   const db = getDb()
   const sessionRow = db.prepare('SELECT distraction_count FROM sessions WHERE id = ?').get(currentSessionId) as { distraction_count: number }
@@ -134,9 +157,15 @@ export function startMonitoring(sessionId: string) {
     stopMonitoring()
   }
 
+  // Auto-toggle native system DND on focus session start/resume
+  toggleSystemDND(true).catch((err) => {
+    console.error('[MONITOR] Error activating system DND:', err)
+  })
+
   currentSessionId = sessionId
   activeDistraction = null
   switchChecksCount = 0
+  isTrackerDegraded = false
 
   const simulateActivity = getSetting('simulate-activity', 'false') === 'true'
 
@@ -145,6 +174,14 @@ export function startMonitoring(sessionId: string) {
   } else {
     startNativeMonitoring()
   }
+
+  import('../windows/widget-window')
+    .then(({ startWidgetTickerForActiveWindow }) => {
+      startWidgetTickerForActiveWindow()
+    })
+    .catch((err) => {
+      console.error('[MONITOR] Failed to dynamically import widget-window for startWidgetTicker:', err)
+    })
 }
 
 function startSimulation() {
@@ -171,6 +208,7 @@ function startNativeMonitoring() {
 
   try {
     const tempDir = app.getPath('temp')
+    mkdirSync(tempDir, { recursive: true })
     let scriptPath = ''
     let cmd = ''
     let args: string[] = []
@@ -264,11 +302,20 @@ done
       args = [scriptPath]
     }
 
-    console.log(`[MONITOR] Spawning persistent foreground monitor process "${cmd}" with script:`, scriptPath)
-    activeProcess = spawn(cmd, args, { env: process.env, windowsHide: true })
+    let proc: ChildProcess
+    try {
+      console.log(`[MONITOR] Spawning persistent foreground monitor process "${cmd}" with script:`, scriptPath)
+      proc = (spawnOverride || spawn)(cmd, args, { env: process.env, windowsHide: true })
+      activeProcess = proc
+    } catch (spawnErr) {
+      console.warn('[MONITOR] Spawning exception:', spawnErr)
+      throw spawnErr
+    } finally {
+      // Spawning attempt finalized
+    }
 
     let stdoutBuffer = ''
-    activeProcess.stdout?.on('data', (chunk) => {
+    proc.stdout?.on('data', (chunk) => {
       stdoutBuffer += chunk.toString()
       const lines = stdoutBuffer.split(/\r?\n/)
       stdoutBuffer = lines.pop() || ''
@@ -286,37 +333,79 @@ done
       }
     })
 
-    activeProcess.stderr?.on('data', (err) => {
-      console.warn('[MONITOR] Tracker native stderr feedback:', err.toString())
+    proc.stderr?.on('data', (err) => {
+      const errStr = err.toString()
+      console.warn('[MONITOR] Tracker native stderr feedback:', errStr)
+      if (
+        errStr.includes('PermissionDenied') || 
+        errStr.includes('SecurityError') ||
+        errStr.toLowerCase().includes('permissiondenied') ||
+        errStr.toLowerCase().includes('securityerror') ||
+        errStr.toLowerCase().includes('permission denied')
+      ) {
+        fallbackToSimulation(true)
+      }
     })
 
-    activeProcess.on('error', (err) => {
+    proc.on('error', (err) => {
       console.warn('[MONITOR] Tracker launch or runtime exception:', err)
-      fallbackToSimulation()
+      fallbackToSimulation(true)
     })
 
-    activeProcess.on('close', (code) => {
+    proc.on('close', (code) => {
       console.log('[MONITOR] Tracker native process closed with exit code', code)
       if (currentSessionId && !isTrackingSimulated && code !== 0) {
         // Fall back gracefully to simulation if active tracker closes abnormally
-        fallbackToSimulation()
+        fallbackToSimulation(true)
       }
     })
 
   } catch (err) {
     console.warn('[MONITOR] Exception bootstrapping native tracker:', err)
-    fallbackToSimulation()
+    fallbackToSimulation(true)
   }
 }
 
-function fallbackToSimulation() {
+function fallbackToSimulation(isDegraded: boolean = false) {
   if (isTrackingSimulated || !currentSessionId) return
   console.log('[MONITOR] Native foreground window capture is unavailable in this environment. Falling back to simulated tracker.')
-  stopMonitoring() // clean activeProcess
+  
+  if (isDegraded) {
+    isTrackerDegraded = true
+    broadcastToWindows('session:tracker-degraded', "restricted metrics capture")
+  }
+
+  const savedSessionId = currentSessionId
+  if (activeProcess) {
+    try {
+      activeProcess.kill()
+    } catch (e) {
+      // Quiet
+    }
+    activeProcess = null
+  }
+  if (simulationInterval) {
+    clearInterval(simulationInterval)
+    simulationInterval = null
+  }
   startSimulation()
+  currentSessionId = savedSessionId
 }
 
 export function stopMonitoring() {
+  // Auto-toggle native system DND off on focus session pause/stop
+  toggleSystemDND(false).catch((err) => {
+    console.error('[MONITOR] Error deactivating system DND:', err)
+  })
+
+  import('../windows/widget-window')
+    .then(({ clearWidgetTicker }) => {
+      clearWidgetTicker()
+    })
+    .catch((err) => {
+      console.error('[MONITOR] Failed to dynamically import widget-window for clearWidgetTicker:', err)
+    })
+
   if (simulationInterval) {
     clearInterval(simulationInterval)
     simulationInterval = null
@@ -345,3 +434,60 @@ export function stopMonitoring() {
 export function isMonitoring(): boolean {
   return activeProcess !== null || simulationInterval !== null
 }
+
+export function getTrackerDegradedStatus(): boolean {
+  return isTrackerDegraded
+}
+
+export function handlePowerSuspendOrLock(): void {
+  if (currentSessionId) {
+    const sessionId = currentSessionId
+    systemPausedSessionId = sessionId
+    console.log(`[MONITOR] System suspend or screen lock detected for session ${sessionId}. Transitioning to cleanly paused state.`)
+    
+    // Write paused status in the database, with paused_at stored in ended_at
+    const db = getDb()
+    db.prepare(`
+      UPDATE sessions 
+      SET status = 'paused', ended_at = ? 
+      WHERE id = ?
+    `).run(new Date().toISOString(), sessionId)
+    
+    // Explicitly stop active process daemons (PowerShell/AppleScript/Bash) on lock
+    stopMonitoring()
+    
+    // Emit state-changed event broadcast (session:state-changed) to alert renderer packages.
+    broadcastToWindows('session:state-changed')
+  }
+}
+
+export function handlePowerResumeOrUnlock(): void {
+  if (systemPausedSessionId) {
+    const sessionId = systemPausedSessionId
+    console.log(`[MONITOR] System resume or screen unlock detected. Prompting user to resume session ${sessionId}.`)
+    
+    // Broadcast 'session:system-resumed' with the paused session ID so that the renderer can show a fluid sidebar toast prompt
+    broadcastToWindows('session:system-resumed', sessionId)
+    broadcastToWindows('session:state-changed')
+    
+    systemPausedSessionId = null
+  }
+}
+
+// Connect listeners
+powerMonitor.on('suspend', () => {
+  handlePowerSuspendOrLock()
+})
+
+powerMonitor.on('lock-screen', () => {
+  handlePowerSuspendOrLock()
+})
+
+powerMonitor.on('resume', () => {
+  handlePowerResumeOrUnlock()
+})
+
+powerMonitor.on('unlock-screen', () => {
+  handlePowerResumeOrUnlock()
+})
+

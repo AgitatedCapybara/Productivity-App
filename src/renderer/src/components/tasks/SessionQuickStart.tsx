@@ -11,9 +11,18 @@ export function SessionQuickStart() {
   const { startSession } = useTasks()
   const projects = useAppStore((state: AppState) => state.projects)
   
+  const storeTargetBreakMins = useAppStore((state: AppState) => state.targetBreakDurationMins)
+  const storeTargetStudyMins = useAppStore((state: AppState) => state.targetStudyDurationMins)
+  const setTargetStudyDurationMins = useAppStore((state: AppState) => state.setTargetStudyDurationMins)
+  const setTargetBreakDurationMins = useAppStore((state: AppState) => state.setTargetBreakDurationMins)
+  const setCurrentPhase = useAppStore((state: AppState) => state.setCurrentPhase)
+  const setSessionTargetDurationMins = useAppStore((state: AppState) => state.setSessionTargetDurationMins)
+
   // Choose Inbox/default project by default
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
-  const [durationMins, setDurationMins] = useState(25)
+  const [durationMins, setDurationMins] = useState(storeTargetStudyMins || 25)
+  const [isPomodoro, setIsPomodoro] = useState(false)
+  const [breakMins, setBreakMins] = useState(storeTargetBreakMins || 5)
   const [isStarting, setIsStarting] = useState(false)
 
   const presets = [15, 25, 45, 60, 90]
@@ -21,9 +30,21 @@ export function SessionQuickStart() {
   const handleStart = async () => {
     setIsStarting(true)
     try {
+      if (isPomodoro) {
+        setCurrentPhase('study')
+        setSessionTargetDurationMins(durationMins)
+        setTargetStudyDurationMins(durationMins)
+        setTargetBreakDurationMins(breakMins)
+      } else {
+        setCurrentPhase('study')
+        setSessionTargetDurationMins(durationMins)
+        setTargetStudyDurationMins(durationMins)
+      }
+
       await startSession({
         projectId: selectedProjectId,
-        targetDurationMins: durationMins
+        targetDurationMins: durationMins,
+        targetBreakDurationMins: isPomodoro ? breakMins : undefined
       })
       setIsOpen(false)
     } catch (err) {
@@ -136,54 +157,160 @@ export function SessionQuickStart() {
             </div>
 
             {/* Time Slider & Presets */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-                  Session Duration
-                </label>
-                <span className="text-sm font-semibold text-[var(--accent-primary)] font-mono">
-                  {durationMins} minutes
-                </span>
-              </div>
-              
-              {/* Presets Grid */}
-              <div className="grid grid-cols-5 gap-1.5 mb-3">
-                {presets.map((p: number) => (
-                  <button
-                    key={p}
-                    type="button"
-                    onClick={() => setDurationMins(p)}
-                    className={cn(
-                      "py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer text-xs font-mono",
-                      durationMins === p
-                        ? "bg-[var(--accent-primary-muted)] text-[var(--accent-primary)] border-[var(--accent-primary)]/30 font-bold"
-                        : "bg-transparent border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
-                    )}
-                  >
-                    {p}m
-                  </button>
-                ))}
+            <div className="space-y-4">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1">
+                    ⏱️ {isPomodoro ? 'FOCUS DURATION' : 'SESSION DURATION'}
+                  </label>
+                  <span className={cn(
+                    "text-sm font-semibold font-mono transition-colors",
+                    isPomodoro ? "text-indigo-400" : "text-[var(--accent-primary)]"
+                  )}>
+                    {durationMins} minutes
+                  </span>
+                </div>
+                
+                {/* Presets Grid */}
+                <div className="grid grid-cols-5 gap-1.5 mb-3">
+                  {presets.map((p: number) => (
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setDurationMins(p)}
+                      className={cn(
+                        "py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer text-xs font-mono",
+                        durationMins === p
+                          ? isPomodoro
+                            ? "bg-indigo-600/20 text-indigo-400 border-indigo-500/40 font-bold"
+                            : "bg-[var(--accent-primary-muted)] text-[var(--accent-primary)] border-[var(--accent-primary)]/30 font-bold"
+                          : "bg-transparent border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                      )}
+                    >
+                      {p}m
+                    </button>
+                  ))}
+                </div>
+
+                {/* Slider */}
+                <input
+                  type="range"
+                  min="5"
+                  max="180"
+                  step="5"
+                  value={durationMins}
+                  onChange={(e) => setDurationMins(parseInt(e.target.value))}
+                  className={cn(
+                    "w-full h-1 bg-[var(--border-subtle)] rounded-lg appearance-none cursor-pointer mb-2 transition-colors",
+                    isPomodoro ? "accent-indigo-500" : "accent-[var(--accent-primary)]"
+                  )}
+                />
               </div>
 
-              {/* Slider */}
-              <input
-                type="range"
-                min="5"
-                max="180"
-                step="5"
-                value={durationMins}
-                onChange={(e) => setDurationMins(parseInt(e.target.value))}
-                className="w-full accent-[var(--accent-primary)] h-1 bg-[var(--border-subtle)] rounded-lg appearance-none cursor-pointer mb-2"
-              />
+              {/* Pomodoro Session Toggle Button */}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setIsPomodoro(!isPomodoro)}
+                  className={cn(
+                    "w-full flex items-center justify-between p-3 rounded-xl border text-xs font-semibold cursor-pointer transition-all",
+                    isPomodoro
+                      ? "bg-red-500/10 border-red-500/30 text-red-400"
+                      : "bg-transparent border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                  )}
+                  id="toggle-pomodoro-mode"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-base">🍅</span>
+                    <div className="text-left">
+                      <span className="block font-bold">Pomodoro Mode</span>
+                      <span className="block text-[10px] text-[var(--text-muted)] font-normal mt-0.5">
+                        Automatically alternate focus sessions with breaks
+                      </span>
+                    </div>
+                  </div>
+                  <div className={cn(
+                    "w-8 h-4 rounded-full p-0.5 transition-colors relative flex items-center",
+                    isPomodoro ? "bg-red-500" : "bg-[var(--border-muted)]"
+                  )}>
+                    <motion.div
+                      layout
+                      className="w-3 h-3 bg-white rounded-full shadow"
+                      animate={{ x: isPomodoro ? 16 : 0 }}
+                      transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    />
+                  </div>
+                </button>
+              </div>
+
+              {/* Expanded Break Config Section */}
+              {isPomodoro && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  className="space-y-3 pt-3 border-t border-[var(--border-subtle)]"
+                  id="pomodoro-break-config"
+                >
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1">
+                      ☕ BREAK DURATION
+                    </label>
+                    <span className="text-xs font-mono font-bold text-emerald-400">
+                      {breakMins} minutes
+                    </span>
+                  </div>
+
+                  {/* Break Presets */}
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {[3, 5, 10, 15, 20].map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setBreakMins(p)}
+                        className={cn(
+                          "py-1.5 px-1 rounded-lg border text-center transition-all cursor-pointer text-xs font-mono font-bold",
+                          breakMins === p
+                            ? "bg-emerald-600/20 text-emerald-400 border-emerald-500/40"
+                            : "bg-transparent border-[var(--border-default)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
+                        )}
+                        id={`quick-break-duration-${p}`}
+                      >
+                        {p}m
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Break Slider */}
+                  <input
+                    type="range"
+                    min="1"
+                    max="60"
+                    step="1"
+                    value={breakMins}
+                    onChange={(e) => setBreakMins(parseInt(e.target.value))}
+                    className="w-full accent-emerald-500 h-1 bg-[var(--border-subtle)] rounded-lg appearance-none cursor-pointer"
+                    id="quick-break-duration-slider"
+                  />
+                </motion.div>
+              )}
             </div>
 
             {/* Submit Button */}
             <button
               onClick={handleStart}
               disabled={isStarting}
-              className="w-full py-2.5 bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)] text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all hover:shadow-lg disabled:opacity-50"
+              className={cn(
+                "w-full py-2.5 text-white text-xs font-semibold rounded-xl flex items-center justify-center gap-2 cursor-pointer transition-all hover:shadow-lg disabled:opacity-50",
+                isPomodoro
+                  ? "bg-red-600 hover:bg-red-500"
+                  : "bg-[var(--accent-primary)] hover:bg-[var(--accent-primary-hover)]"
+              )}
             >
-              🚀 Start {selectedProject ? `"${selectedProject.name}"` : 'General'} Focus Session ({durationMins}m)
+              {isPomodoro ? (
+                <>🍅 Start {selectedProject ? `"${selectedProject.name}"` : 'General'} Pomodoro ({durationMins}m + {breakMins}m Break)</>
+              ) : (
+                <>🚀 Start {selectedProject ? `"${selectedProject.name}"` : 'General'} Focus Session ({durationMins}m)</>
+              )}
             </button>
           </div>
         </motion.div>

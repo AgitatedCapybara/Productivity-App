@@ -53,7 +53,7 @@ export function registerWindowHandlers(mainWindow: BrowserWindow) {
       if (active) {
         // Stop tracker/monitoring
         try {
-          const { stopMonitoring } = require('../services/distraction-monitor')
+          const { stopMonitoring } = await import('../services/distraction-monitor')
           stopMonitoring()
         } catch (_) {}
 
@@ -62,11 +62,11 @@ export function registerWindowHandlers(mainWindow: BrowserWindow) {
         
         // Write time to task if a task is assigned and duration > 0
         try {
-          const { getDb } = require('../db/database')
+          const { getDb } = await import('../db/database')
           const db = getDb()
-          const sessionInDb = db.prepare('SELECT * FROM sessions WHERE id = ?').get(active.id)
+          const sessionInDb = db.prepare('SELECT * FROM sessions WHERE id = ?').get(active.id) as any
           if (sessionInDb && sessionInDb.task_id && sessionInDb.duration_mins > 0) {
-            const { writeTimeToTask } = require('../db/tasks')
+            const { writeTimeToTask } = await import('../db/sessions')
             writeTimeToTask(sessionInDb.task_id, sessionInDb.duration_mins)
           }
         } catch (dbErr) {
@@ -79,13 +79,13 @@ export function registerWindowHandlers(mainWindow: BrowserWindow) {
 
     // 2. Shut down tracker if active and not already closed
     try {
-      const { stopMonitoring } = require('../services/distraction-monitor')
+      const { stopMonitoring } = await import('../services/distraction-monitor')
       stopMonitoring()
     } catch (_) {}
 
     // 3. Destroy tray to prevent background ghost process
     try {
-      const { tray } = require('../index')
+      const { tray } = await import('../index')
       if (tray) {
         tray.destroy()
       }

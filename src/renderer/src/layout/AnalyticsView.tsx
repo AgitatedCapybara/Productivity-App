@@ -14,7 +14,8 @@ import {
   CheckCircle2,
   Award,
   SlidersHorizontal,
-  Calendar
+  Calendar,
+  Compass
 } from 'lucide-react'
 import { 
   AreaChart, 
@@ -23,9 +24,6 @@ import {
   YAxis, 
   Tooltip,
   CartesianGrid,
-  BarChart,
-  Bar,
-  Cell,
   ResponsiveContainer
 } from 'recharts'
 import { useAppStore } from '../store/useAppStore'
@@ -47,7 +45,7 @@ export function AnalyticsView() {
   
   // Interactive Project Filter State
   const [filterProjectId, setFilterProjectId] = useState<string>('all')
-  const [activeTab, setActiveTab] = useState<'focus' | 'tasks'>('focus')
+  const [activeTab, setActiveTab] = useState<'focus' | 'tasks' | 'rituals'>('focus')
 
   const projects = useAppStore(state => state.projects)
   const preselectedSessionId = useAppStore(state => state.preselectedSessionId)
@@ -439,9 +437,22 @@ export function AnalyticsView() {
     return time >= startTime && time <= endTime
   })
 
-  // Map tasks to daily buckets
-  const dailyCompletionData = useMemo((): { dateStr: string; count: number; timestamp: number }[] => {
-    const dailyMap: Record<string, { dateStr: string; count: number; timestamp: number }> = {}
+  // Filter all tasks that were created within this timeframe and match project
+  const filteredAllTasks = useMemo(() => {
+    return allTasks.filter(t => matchesProject(t.project_id))
+  }, [allTasks, filterProjectId])
+
+  const createdTasksInTimeframe = useMemo(() => {
+    return filteredAllTasks.filter(t => {
+      if (!t.created_at) return false
+      const time = new Date(t.created_at).getTime()
+      return time >= startTime && time <= endTime
+    })
+  }, [filteredAllTasks, startTime, endTime])
+
+  // Map tasks to daily buckets for both completed and created
+  const dailyCompletionData = useMemo((): { dateStr: string; count: number; createdCount: number; timestamp: number }[] => {
+    const dailyMap: Record<string, { dateStr: string; count: number; createdCount: number; timestamp: number }> = {}
     
     // Initialize empty day grids
     for (let i = timeScaleDays - 1; i >= 0; i--) {
@@ -451,11 +462,12 @@ export function AnalyticsView() {
       dailyMap[key] = {
         dateStr: key,
         count: 0,
+        createdCount: 0,
         timestamp: zeroed.getTime()
       }
     }
     
-    // Populate values
+    // Populate completed values
     completedTasksInTimeframe.forEach(t => {
       if (!t.completed_at) return
       const d = new Date(t.completed_at)
@@ -464,12 +476,25 @@ export function AnalyticsView() {
         dailyMap[key].count += 1
       } else {
         const zeroed = new Date(d.getFullYear(), d.getMonth(), d.getDate())
-        dailyMap[key] = { dateStr: key, count: 1, timestamp: zeroed.getTime() }
+        dailyMap[key] = { dateStr: key, count: 1, createdCount: 0, timestamp: zeroed.getTime() }
+      }
+    })
+
+    // Populate created values
+    createdTasksInTimeframe.forEach(t => {
+      if (!t.created_at) return
+      const d = new Date(t.created_at)
+      const key = d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+      if (dailyMap[key]) {
+        dailyMap[key].createdCount += 1
+      } else {
+        const zeroed = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+        dailyMap[key] = { dateStr: key, count: 0, createdCount: 1, timestamp: zeroed.getTime() }
       }
     })
     
     return Object.values(dailyMap).sort((a, b) => a.timestamp - b.timestamp)
-  }, [completedTasksInTimeframe, timeScaleDays, nowTime])
+  }, [completedTasksInTimeframe, createdTasksInTimeframe, timeScaleDays, nowTime])
 
   // Sort completed tasks for detailed recap list (newest first)
   const sortedCompletedTasks = useMemo((): Task[] => {
@@ -505,6 +530,51 @@ export function AnalyticsView() {
     ? Math.round(((totalLoggedMinsForEstimates - totalEstimatedMins) / totalEstimatedMins) * 100)
     : 0
 
+  // True capacity variance percentage
+  const capacityVarianceData = useMemo(() => {
+    const tasksWithEstimatesInTimeframe = completedTasksInTimeframe.filter(t => t.time_estimate_mins > 0)
+    if (tasksWithEstimatesInTimeframe.length === 0) {
+      return { percentage: 0, hasData: false, label: "No estimates" }
+    }
+
+    let totalEstimated = 0
+    let totalActual = 0
+
+    tasksWithEstimatesInTimeframe.forEach(t => {
+      totalEstimated += t.time_estimate_mins
+      // Find linked sessions
+      const linkedSessions = history.filter(s => s.taskId === t.id || s.task_id === t.id)
+      const actualMins = linkedSessions.reduce((sum, s) => {
+        const mins = s.durationMins || s.duration_mins || Math.round((s.durationSeconds ?? 0) / 60)
+        return sum + mins
+      }, 0)
+      totalActual += actualMins
+    })
+
+    if (totalEstimated === 0) {
+      return { percentage: 0, hasData: false, label: "No estimates" }
+    }
+
+    const variancePct = Math.round(((totalActual - totalEstimated) / totalEstimated) * 100)
+
+    let label = ""
+    if (variancePct === 0) {
+      label = "100% Match"
+    } else if (variancePct < 0) {
+      label = `-${Math.abs(variancePct)}% Under-estimated`
+    } else {
+      label = `+${variancePct}% Over-committed`
+    }
+
+    return {
+      percentage: variancePct,
+      hasData: true,
+      label,
+      totalEstimated,
+      totalActual
+    }
+  }, [completedTasksInTimeframe, history])
+
   return (
     <div className="flex-1 flex flex-col bg-[#09090b] text-white overflow-hidden p-6 relative no-drag animate-fade-in">
       {/* Dynamic backdrop neon glows */}
@@ -519,7 +589,7 @@ export function AnalyticsView() {
             Productivity Statistics
           </h1>
           <p className="text-zinc-500 text-xs">
-            Review your stats and projections to help yourself grow!
+            Review your stats, task completion velocity, and growth!
           </p>
         </div>
 
@@ -605,8 +675,7 @@ export function AnalyticsView() {
                   Focus Session Stats
                 </span>
               </button>
-              
-              <button
+                           <button
                 onClick={() => setActiveTab('tasks')}
                 className={cn(
                   "flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold relative transition-all focus:outline-none cursor-pointer",
@@ -623,6 +692,26 @@ export function AnalyticsView() {
                 <span className="relative z-10 flex items-center gap-1.5">
                   <CheckCircle2 size={13} className={cn(activeTab === 'tasks' ? "text-emerald-400" : "text-zinc-500")} />
                   Tasks & Achievements
+                </span>
+              </button>
+
+              <button
+                onClick={() => setActiveTab('rituals')}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-1.5 rounded-lg text-xs font-semibold relative transition-all focus:outline-none cursor-pointer",
+                  activeTab === 'rituals' ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+                )}
+              >
+                {activeTab === 'rituals' && (
+                  <motion.div
+                    layoutId="active-stats-tab"
+                    className="absolute inset-0 bg-zinc-900 border border-zinc-805 rounded-lg -z-0"
+                    transition={{ type: "spring", stiffness: 350, damping: 25 }}
+                  />
+                )}
+                <span className="relative z-10 flex items-center gap-1.5">
+                  <Compass size={13} className={cn(activeTab === 'rituals' ? "text-purple-400" : "text-zinc-500")} />
+                  Rituals Consistency
                 </span>
               </button>
             </div>
@@ -646,7 +735,7 @@ export function AnalyticsView() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                     <div className="bg-zinc-900/35 border border-zinc-800/40 p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
                       <div>
-                        <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block mb-1">SESSION BLOCKS</span>
+                        <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block mb-1">FOCUSED SPRINT BLOCKS</span>
                         <span className="text-2xl font-black font-mono text-zinc-100">{totalSessionsCount}</span>
                       </div>
                       <span className="text-[10px] text-zinc-500 block mt-2">Active intervals completed</span>
@@ -662,7 +751,7 @@ export function AnalyticsView() {
 
                     <div className="bg-zinc-900/35 border border-zinc-800/40 p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
                       <div>
-                        <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block mb-1">DISTRACTIONS</span>
+                        <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block mb-1">DISTRACTIONS HALTED</span>
                         <span className={cn(
                           "text-2xl font-black font-mono block",
                           totalDistractionCount > 0 ? "text-rose-400" : "text-emerald-400"
@@ -912,8 +1001,8 @@ export function AnalyticsView() {
                     {/* RHS Sprints log (8 cols) */}
                     <div className="lg:col-span-8 bg-zinc-900/10 border border-zinc-800/40 rounded-2.5xl p-4.5 flex flex-col min-h-0 h-[380px]">
                       <div className="mb-4">
-                        <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-widest font-mono mb-0.5">Focus Session History</h3>
-                        <p className="text-[10px] text-zinc-500 font-sans"> </p>
+                        <h3 className="text-xs font-bold text-zinc-300 uppercase tracking-widest font-mono mb-0.5">Focus Sprints History</h3>
+                        <p className="text-[10px] text-zinc-500 font-sans">Click a session timeline box to evaluate detail metrics, energy logs & reflections</p>
                       </div>
 
                       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3.5 pr-1.5">
@@ -1049,14 +1138,14 @@ export function AnalyticsView() {
 
                                 {/* Actions buttons */}
                                 {!isEditing && (
-                                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 no-drag select-none text-zinc-400">
+                                  <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex items-center no-drag select-none text-zinc-400">
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         setEditingSessionId(sessId)
                                         setEditingSessionName(taskTitle)
                                       }}
-                                      className="p-1.5 bg-zinc-950/85 border border-zinc-800 hover:border-indigo-500/35 text-zinc-400 hover:text-indigo-400 rounded-lg cursor-pointer transition-all"
+                                      className="w-10 h-10 flex items-center justify-center bg-zinc-950/85 border border-zinc-800 hover:border-indigo-500/35 text-zinc-400 hover:text-indigo-400 rounded-lg cursor-pointer transition-all"
                                       title="Rename"
                                     >
                                       <Pencil size={11} />
@@ -1066,7 +1155,7 @@ export function AnalyticsView() {
                                         e.stopPropagation()
                                         handleDeleteSession(sessId)
                                       }}
-                                      className="p-1.5 bg-zinc-950/85 border border-zinc-800 hover:border-red-500/35 text-zinc-400 hover:text-red-400 rounded-lg cursor-pointer transition-all"
+                                      className="w-10 h-10 flex items-center justify-center bg-zinc-950/85 border border-zinc-800 hover:border-red-500/35 text-zinc-400 hover:text-red-400 rounded-lg cursor-pointer transition-all ml-4"
                                       title="Delete"
                                     >
                                       <Trash2 size={11} />
@@ -1079,7 +1168,7 @@ export function AnalyticsView() {
                         ) : (
                           <div className="flex flex-col items-center justify-center p-6 border border-dashed border-zinc-850 rounded-2xl h-full text-center text-zinc-500 bg-zinc-950/10">
                             <Clock size={16} className="text-zinc-650 mb-2" />
-                            <span className="text-[10px] font-bold text-zinc-400 font-mono uppercase tracking-widest">No matching focus sessions</span>
+                            <span className="text-[10px] font-bold text-zinc-400 font-mono uppercase tracking-widest">No matching focus sprints</span>
                             <p className="text-[9.5px] text-zinc-650 mt-1 max-w-[210px] font-sans">Work blocks for your currently filtered project have not been created yet.</p>
                           </div>
                         )}
@@ -1088,9 +1177,9 @@ export function AnalyticsView() {
                   </div>
                 </div>
               )
-            ) : (
-              /* TASK VIEW TAB */
-              allTasks.length === 0 ? (
+            ) : activeTab === 'tasks' ? (
+               /* TASK VIEW TAB */
+               allTasks.length === 0 ? (
                 <div className="flex-1 flex flex-col items-center justify-center text-center p-8 max-w-sm mx-auto my-12">
                   <div className="w-14 h-14 rounded-2xl bg-zinc-900/50 border border-zinc-800/80 flex items-center justify-center text-emerald-400 mb-4 shadow-xl">
                     <CheckCircle2 size={24} className="stroke-emerald-450/80 animate-pulse" />
@@ -1120,15 +1209,12 @@ export function AnalyticsView() {
                         <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block mb-1">ESTIMATION PREDICTABILITY</span>
                         <span className={cn(
                           "text-2xl font-black font-mono block",
-                          estimationDeviationPct <= 0 ? "text-emerald-400" : "text-amber-550"
+                          !capacityVarianceData.hasData ? "text-zinc-400" : capacityVarianceData.percentage <= 0 ? "text-emerald-400" : "text-amber-550"
                         )}>
-                          {tasksWithEstimates.length > 0 
-                            ? estimationDeviationPct === 0 ? "100% Match" : estimationDeviationPct < 0 ? `${Math.abs(estimationDeviationPct)}% Faster` : `${estimationDeviationPct}% Over`
-                            : "No estimates"
-                          }
+                          {capacityVarianceData.label}
                         </span>
                       </div>
-                      <span className="text-[10px] text-zinc-500 block mt-2">Scale deviation vs targets</span>
+                      <span className="text-[10px] text-zinc-500 block mt-2">Capacity variance vs targets</span>
                     </div>
                   </div>
 
@@ -1147,7 +1233,13 @@ export function AnalyticsView() {
 
                     <div className="h-56 w-full pt-4">
                       <ResponsiveContainer width="100%" height={210}>
-                        <BarChart data={dailyCompletionData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                        <AreaChart data={dailyCompletionData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+                          <defs>
+                            <linearGradient id="colorCompleted" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#10b981" stopOpacity={0.25}/>
+                              <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
                           <CartesianGrid stroke="#27272a" strokeOpacity={0.3} strokeDasharray="3 3" vertical={false} />
                           <XAxis 
                             dataKey="dateStr" 
@@ -1174,18 +1266,30 @@ export function AnalyticsView() {
                               fontSize: '10px'
                             }}
                           />
-                          <Bar 
+                          <Area 
+                            type="monotone" 
+                            dataKey="createdCount" 
+                            stroke="#6366f1" 
+                            strokeWidth={1.5}
+                            fill="transparent" 
+                            strokeDasharray="4 4"
+                            isAnimationActive={false}
+                            name="Created"
+                            dot={renderCustomDot(2, '#4f46e5')}
+                            activeDot={{ r: 4 }}
+                          />
+                          <Area 
+                            type="monotone" 
                             dataKey="count" 
-                            radius={[4, 4, 0, 0]}
-                          >
-                            {dailyCompletionData.map((entry, index) => (
-                              <Cell 
-                                key={`cell-${index}`} 
-                                fill={entry.count > 0 ? '#10b981' : '#27272a'} 
-                              />
-                            ))}
-                          </Bar>
-                        </BarChart>
+                            stroke="#10b981" 
+                            strokeWidth={1.5}
+                            fill="url(#colorCompleted)" 
+                            isAnimationActive={false}
+                            name="Completed"
+                            dot={renderCustomDot(3, '#10b981')}
+                            activeDot={{ r: 5 }}
+                          />
+                        </AreaChart>
                       </ResponsiveContainer>
                     </div>
                   </div>
@@ -1387,6 +1491,8 @@ export function AnalyticsView() {
                   </div>
                 </div>
               )
+            ) : (
+              <RitualsSummaryView />
             )}
           </div>
         </div>
@@ -1407,6 +1513,187 @@ export function AnalyticsView() {
           />
         )}
       </AnimatePresence>
+    </div>
+  )
+}
+
+function RitualsSummaryView() {
+  const [summary, setSummary] = useState<any>(null)
+  const [streak, setStreak] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [isWhyMatterCollapsed, setIsWhyMatterCollapsed] = useState(false)
+  const [isWhyMatterDismissed, setIsWhyMatterDismissed] = useState(false)
+
+  const loadRitualStats = async () => {
+    if (window.electronAPI) {
+      try {
+        setLoading(true)
+        const [sum, strk] = await Promise.all([
+          window.electronAPI.getWeeklyRitualSummary(),
+          window.electronAPI.getRitualStreak()
+        ])
+        setSummary(sum)
+        setStreak(strk)
+      } catch (err) {
+        console.error('Failed to load ritual summary:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+  }
+
+  useEffect(() => {
+    loadRitualStats()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center p-14 gap-2 text-zinc-500">
+        <div className="w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs font-mono text-zinc-500">Gathering ritual compliance & consistency logs...</span>
+      </div>
+    )
+  }
+
+  const completionRate = summary?.completionRate ?? 0
+  const avgCommitted = summary?.avgTasksCommitted ?? 0
+  const avgCompleted = summary?.avgTasksCompleted ?? 0
+  const capacityAccuracy = summary?.capacityAccuracy ?? 100
+
+  const currentStreak = streak?.currentStreak ?? 0
+  const longestStreak = streak?.longestStreak ?? 0
+
+  return (
+    <div className="space-y-6 animate-fade-in" id="rituals-analytics-section">
+      {/* KPI block cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Cardinal completion bar */}
+        <div className="bg-zinc-900/35 border border-zinc-800/40 p-5 rounded-2xl relative overflow-hidden flex flex-col justify-between" id="metric-completion-rate">
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block">7-DAY COMPLETION RATE</span>
+            <span className="text-3xl font-black font-sans text-purple-400">{completionRate}%</span>
+          </div>
+          <div className="mt-3">
+            <div className="h-2 w-full bg-zinc-900 rounded-full overflow-hidden border border-zinc-800/65">
+              <div 
+                className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-300" 
+                style={{ width: `${completionRate}%` }}
+              />
+            </div>
+            <span className="text-[10px] text-zinc-500 block mt-1.5 font-sans">Completing both morning & evening ritual sessions</span>
+          </div>
+        </div>
+
+        {/* Streaks */}
+        <div className="bg-zinc-900/35 border border-zinc-800/40 p-5 rounded-2xl relative overflow-hidden flex flex-col justify-between" id="metric-ritual-streaks">
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block">RITUAL STREAK</span>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-black font-sans text-orange-400">{currentStreak}</span>
+              <span className="text-xs text-zinc-500">days active</span>
+            </div>
+          </div>
+          <span className="text-[10px] text-zinc-500 block mt-3 font-sans">
+            Longest streak: <strong className="text-orange-400/90 font-semibold">{longestStreak} days</strong>
+          </span>
+        </div>
+
+        {/* Capacity Accuracy Heuristic */}
+        <div className="bg-zinc-900/35 border border-zinc-800/40 p-5 rounded-2xl relative overflow-hidden flex flex-col justify-between" id="metric-capacity-accuracy">
+          <div className="space-y-1">
+            <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block">CAPACITY ALIGNMENT ACCURACY</span>
+            <span className="text-3xl font-black font-sans text-emerald-400">{capacityAccuracy}%</span>
+          </div>
+          <span className="text-[10px] text-zinc-500 block mt-3 font-sans">
+            Accuracy of committed task estimates vs. actual core focus logs
+          </span>
+        </div>
+      </div>
+
+      {/* Comparisons card section */}
+      <div className={cn(
+        "grid gap-5",
+        isWhyMatterDismissed ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2"
+      )}>
+        <div className="bg-zinc-900/10 border border-zinc-800/30 p-5 rounded-2xl flex flex-col gap-4" id="metric-daily-balance">
+          <div>
+            <h3 className="text-sm font-semibold text-zinc-200">Daily Task Delivery Balance</h3>
+            <p className="text-xs text-zinc-500">Sunsama balance comparison of morning commitments versus evening completed items.</p>
+          </div>
+
+          <div className="flex items-center justify-around py-4">
+            <div className="text-center">
+              <span className="text-xs text-zinc-500 uppercase font-semibold block">Morning committed</span>
+              <p className="text-3xl font-black text-amber-400 font-mono mt-1">{avgCommitted}</p>
+              <span className="text-[10px] text-zinc-650 block">Tasks / day</span>
+            </div>
+
+            <div className="h-10 border-l border-zinc-850" />
+
+            <div className="text-center">
+              <span className="text-xs text-zinc-500 uppercase font-semibold block">Evening finished</span>
+              <p className="text-3xl font-black text-purple-400 font-mono mt-1">{avgCompleted}</p>
+              <span className="text-[10px] text-zinc-650 block">Tasks / day</span>
+            </div>
+          </div>
+
+          <p className="text-[11px] text-zinc-400 leading-relaxed italic bg-zinc-950/40 border border-zinc-800/40 p-3.5 rounded-xl">
+            {avgCommitted > avgCompleted + 1.5 
+              ? "💡 Advice: You are committing to more work in the morning than you can wrap up in the evening. Keep yesterday's lessons in mind and decrease your morning committed tasks threshold by 1-2 items."
+              : avgCommitted === 0 
+                ? "💡 Advice: Start morning planning to calibrate your workday and find your ideal commit sweet spot!"
+                : "💡 Advice: Beautiful calibration! You are scheduling and completing an extremely balanced workload with high precision."
+            }
+          </p>
+        </div>
+
+        {/* Benefits panel card - collapsible and dismissible */}
+        {!isWhyMatterDismissed && (
+          <div className="bg-gradient-to-tr from-purple-500/5 to-zinc-900/20 border border-purple-500/10 p-5 rounded-2xl flex flex-col justify-between transition-all duration-300" id="metric-benefits-panel">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <button 
+                  onClick={() => setIsWhyMatterCollapsed(!isWhyMatterCollapsed)}
+                  className="text-sm font-semibold text-purple-300 flex items-center gap-1.5 hover:text-purple-200 transition cursor-pointer"
+                >
+                  <Compass size={14} className={isWhyMatterCollapsed ? "" : "animate-spin-slow"} />
+                  <span>Why Daily Rituals Matter</span>
+                  <span className="text-[9px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded ml-1 font-mono">
+                    {isWhyMatterCollapsed ? "Show Details" : "Collapse"}
+                  </span>
+                </button>
+                <button
+                  onClick={() => setIsWhyMatterDismissed(true)}
+                  className="text-zinc-500 hover:text-zinc-300 p-1 hover:bg-zinc-800/40 rounded transition cursor-pointer"
+                  title="Dismiss view"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              {!isWhyMatterCollapsed && (
+                <div className="space-y-2 mt-2">
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    Keystone's Morning Plan and Evening Shutdown rituals aim to recreate Sunsama's highly effective intentionality blocks:
+                  </p>
+                  <ul className="text-[11px] text-zinc-400 space-y-1.5 list-disc pl-4 mt-2">
+                    <li><strong>Zero Rollover Debt</strong>: Overdue items are processed intentionally on step 1 rather than cluttering future columns automatically.</li>
+                    <li><strong>Physical Capacity Heuristic</strong>: Grounding your day on realistic available hours rather than infinite aspirational lists.</li>
+                    <li><strong>Complete Disconnection</strong>: Reclaiming evenings by silencing work flows, reflection logging, and creating mental boundaries.</li>
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            {!isWhyMatterCollapsed && (
+              <div className="pt-4 mt-4 border-t border-zinc-805/40 flex items-center justify-between text-[11px] text-purple-400 font-semibold uppercase tracking-wider">
+                <span>Mindfulness productivity engine</span>
+                <span>Keystone v1.2</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }

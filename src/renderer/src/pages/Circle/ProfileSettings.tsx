@@ -3,6 +3,8 @@ import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
 import { CircleProfile } from '../../types'
 import { CircularCropper } from '../../components/CircularCropper'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
+import { dialogTransition } from '../../lib/motion-tokens'
 
 interface ProfileSettingsProps {
   profile: CircleProfile
@@ -39,6 +41,11 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
   const [confirmUsername, setConfirmUsername] = useState('')
   const [deleteError, setDeleteError] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
+
+  const deleteModalRef = useModalFocusTrap<HTMLDivElement>({
+    isOpen: isDeleteDialogOpen,
+    onClose: () => setIsDeleteDialogOpen(false)
+  })
 
   useEffect(() => {
     setDisplayName(profile.display_name)
@@ -129,7 +136,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
   ]
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="grid grid-cols-2 gap-6">
       {/* Edit Profile Form */}
       <div className="p-5 rounded-2xl border border-zinc-850 bg-zinc-900/10 backdrop-blur-md space-y-4 shadow-xl">
         {isCropping && rawImage ? (
@@ -160,27 +167,27 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
             </div>
 
             <form onSubmit={handleSave} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 font-sans">
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] text-white/60">
                   Display Name
                 </label>
                 <input
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full h-10 px-3.5 bg-zinc-950 border border-zinc-850 hover:border-zinc-800 focus:border-indigo-500 rounded-xl text-zinc-100 text-sm font-sans placeholder-zinc-650 transition-all outline-none"
+                  className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all"
                   placeholder="Display Name"
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-zinc-400 mb-1.5 font-sans">
+              <div className="flex flex-col gap-1">
+                <label className="text-[13px] text-white/60">
                   Biography / Status
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full min-h-16 py-2 px-3.5 bg-zinc-950 border border-zinc-850 hover:border-zinc-800 focus:border-indigo-500 rounded-xl text-zinc-100 text-xs font-sans placeholder-zinc-605 transition-all outline-none resize-none"
+                  className="text-[17px] p-2 min-h-[80px] bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all resize-none"
                   placeholder="Describe your current tech stack, goals, or deep work mantra..."
                   maxLength={160}
                 />
@@ -411,16 +418,22 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
+              transition={dialogTransition}
               onClick={() => setIsDeleteDialogOpen(false)}
               className="fixed inset-0 bg-black/60 backdrop-blur-sm"
             />
 
             {/* Modal Body */}
             <motion.div
-              initial={{ scale: 0.95, opacity: 0, y: 15 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 15 }}
-              className="w-full max-w-md bg-zinc-950 border border-zinc-850 rounded-2xl p-6 shadow-2xl relative z-10 space-y-4"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={dialogTransition}
+              ref={deleteModalRef}
+              tabIndex={-1}
+              role="dialog"
+              aria-modal="true"
+              className="w-full max-w-md bg-zinc-950 border border-zinc-850 rounded-2xl p-6 shadow-2xl relative z-10 space-y-4 outline-none"
             >
               <div>
                 <h3 className="text-sm font-bold text-zinc-100 font-sans">

@@ -18,6 +18,7 @@ import {
 import { startMonitoring, stopMonitoring } from '../services/distraction-monitor'
 import { getDb } from '../db/database'
 import type { Session } from '../db/schema'
+import { toggleSystemDND } from '../services/dnd'
 
 async function notifyWindowsOfStateChange() {
   const windows = BrowserWindow.getAllWindows()
@@ -31,6 +32,12 @@ async function notifyWindowsOfStateChange() {
     syncWidgetVisibility()
   } catch (err) {
     console.error('Failed to sync widget visibility:', err)
+  }
+  try {
+    const { updateTrayMenu } = await import('../index')
+    updateTrayMenu()
+  } catch (err) {
+    console.error('Failed to update tray menu on state change:', err)
   }
 }
 
@@ -56,6 +63,7 @@ function mapSessionToDualCase(session: any): any {
     taskId: session.task_id,
     projectId: session.project_id,
     targetDurationMins: session.target_duration_mins,
+    targetBreakDurationMins: session.target_break_duration_mins,
     startedAt: session.started_at,
     endedAt: session.ended_at,
     durationMins: session.duration_mins,
@@ -65,6 +73,7 @@ function mapSessionToDualCase(session: any): any {
     task_id: session.task_id,
     project_id: session.project_id,
     target_duration_mins: session.target_duration_mins,
+    target_break_duration_mins: session.target_break_duration_mins,
     started_at: session.started_at,
     ended_at: session.ended_at,
     duration_mins: session.duration_mins,
@@ -73,7 +82,7 @@ function mapSessionToDualCase(session: any): any {
   }
 }
 
-function calculateSessionMetrics(session: any, distractionsList: any[]): any {
+export function calculateSessionMetrics(session: any, distractionsList: any[]): any {
   const startMs = new Date(session.started_at || session.startedAt).getTime()
   const endMs = session.ended_at || session.endedAt 
     ? new Date(session.ended_at || session.endedAt).getTime() 
@@ -153,8 +162,31 @@ function calculateSessionMetrics(session: any, distractionsList: any[]): any {
 }
 
 export function registerSessionHandlers() {
-  ipcMain.handle('focus-session:start', async (_, payload: { taskId?: string | null; projectId?: string | null; targetDurationMins?: number }) => {
+  ipcMain.handle('focus-session:start', async (_, payload: { taskId?: string | null; projectId?: string | null; targetDurationMins?: number; targetBreakDurationMins?: number }) => {
     console.log('[SESSIONS IPC] focus-session:start called with payload:', JSON.stringify(payload))
+    
+    // Safety check: end any active/paused session cleanly before starting a new one
+    try {
+      const active = getActiveSession()
+      if (active) {
+        console.log(`[SESSIONS IPC] Automatically ending active session ${active.id} before starting a new one.`)
+        stopMonitoring()
+        endSession(active.id)
+        
+        const db = getDb()
+        const sessionInDb = db.prepare('SELECT * FROM sessions WHERE id = ?').get(active.id) as any
+        if (sessionInDb && sessionInDb.task_id && sessionInDb.duration_mins > 0) {
+          try {
+            writeTimeToTask(sessionInDb.task_id, sessionInDb.duration_mins)
+          } catch (dbErr) {
+            console.error('[SESSIONS IPC] DB save error while ending active session', dbErr)
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[SESSIONS IPC] Error automatically ending existing active session:', err)
+    }
+
     const session = createSession(payload)
     console.log('[SESSIONS IPC] focus-session:start created session successfully in DB:', JSON.stringify(session))
     startMonitoring(session.id)
@@ -200,6 +232,19 @@ export function registerSessionHandlers() {
     const distractionsList = getSessionDistractions(updatedSession.id)
     const summary = calculateSessionMetrics(updatedSession, distractionsList)
     notifyWindowsOfSessionEnded(summary)
+
+    // Trigger focus complete notification
+    try {
+      const { sendThrottledNotification } = await import('../index')
+      sendThrottledNotification(
+        'Focus Complete',
+        `Well done! Your focus session is complete. Productive time: ${summary.productiveSeconds}s.`,
+        true // Critical, bypasses throttle
+      )
+    } catch (err) {
+      console.error('Failed to send Focus Complete notification:', err)
+    }
+
     return summary
   })
 
@@ -209,6 +254,17 @@ export function registerSessionHandlers() {
     const mapped = mapSessionToDualCase(active)
     console.log('[SESSIONS IPC] focus-session:getActive mapped dual-case payload:', JSON.stringify(mapped))
     return mapped
+  })
+
+  ipcMain.handle('focus-session:resetStartTime', async () => {
+    const active = getActiveSession()
+    if (active) {
+      const db = getDb()
+      const now = new Date().toISOString()
+      db.prepare('UPDATE sessions SET started_at = ? WHERE id = ?').run(now, active.id)
+      await notifyWindowsOfStateChange()
+    }
+    return true
   })
 
   ipcMain.handle('focus-session:getDistractions', async (_, sessionId: string) => {
@@ -276,7 +332,7 @@ export function registerSessionHandlers() {
     notifyWindowsOfStateChange()
   })
 
-  ipcMain.handle('focus-session:updateReflection', async (_, payload: { sessionId: string; reflection: string; clarityRating: number; energyRating: number }) => {
+  ipcMain.handle('focus-session:updateReflection', async (_, payload: { sessionId: string; reflection: string; clarityRating: number | null; energyRating: number | null }) => {
     try {
       console.log('[SESSIONS IPC] focus-session:updateReflection called with payload:', JSON.stringify(payload))
       if (!payload.sessionId) {
@@ -302,5 +358,15 @@ export function registerSessionHandlers() {
     updateSessionTask(payload.sessionId, payload.taskId)
     notifyWindowsOfStateChange()
     return { success: true }
+  })
+
+  ipcMain.handle('focus-session:toggle-dnd', async (_, payload: { enable: boolean }) => {
+    try {
+      const result = await toggleSystemDND(payload.enable)
+      return { success: result }
+    } catch (err: any) {
+      console.error('[SESSIONS IPC] Failed to toggle system DND via IPC:', err)
+      return { success: false, error: err.message }
+    }
   })
 }

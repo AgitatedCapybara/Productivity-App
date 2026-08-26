@@ -19,6 +19,9 @@ export interface Task {
   completed_at: string | null
   created_at: string
   updated_at: string
+  plan_when?: string | null
+  plan_where?: string | null
+  plan_how?: string | null
 }
 
 export interface Project {
@@ -44,6 +47,7 @@ export interface Session {
   clarity_rating?: number | null
   energy_rating?: number | null
   custom_name?: string | null
+  target_break_duration_mins?: number
 }
 
 export interface Distraction {
@@ -100,6 +104,9 @@ export interface CreateTaskInput {
   time_estimate_mins?: number
   time_logged_mins?: number
   completed_at?: string | null
+  plan_when?: string | null
+  plan_where?: string | null
+  plan_how?: string | null
 }
 
 export type UpdateTaskInput = Partial<CreateTaskInput> & { id: string }
@@ -126,4 +133,50 @@ export interface CreateCalendarEventInput {
 }
 
 export type UpdateCalendarEventInput = Partial<CreateCalendarEventInput> & { id: string }
+
+export interface Note {
+  id: string
+  parent_type: 'task' | 'project' | 'session' | 'standalone'
+  parent_id: string | null
+  title: string
+  body_md: string
+  created_at: string
+  updated_at: string
+  pinned: number // 0 or 1
+  archived: number // 0 or 1
+}
+
+export interface NoteLink {
+  id: string
+  source_note_id: string
+  target_note_id: string
+  created_at: string
+}
+
+export interface CreateNoteInput {
+  parent_type: 'task' | 'project' | 'session' | 'standalone'
+  parent_id?: string | null
+  title: string
+  body_md?: string
+  pinned?: number
+  archived?: number
+}
+
+export type UpdateNoteInput = Partial<CreateNoteInput> & { id: string }
+
+export interface AuditLog {
+  id: string
+  action: string
+  entity_type: string
+  entity_id: string | null
+  timestamp: string
+  metadata_json: string
+}
+
+export interface Setting {
+  key: string
+  value: string
+}
+
+
 

@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Habit, HabitLog, CreateHabitInput, UpdateHabitInput } from '../types'
 import { useAppStore } from '../store/useAppStore'
+import { useCelebrationStore } from '../store/useCelebrationStore'
 
 export function useHabits() {
   const [habits, setHabits] = useState<Habit[]>([])
@@ -100,6 +101,10 @@ export function useHabits() {
   }
 
   const checkIn = async (habitId: string, date: string) => {
+    // Trigger visual celebration side-effect
+    const celebType = Math.random() < 0.5 ? 'confetti' : 'balloons'
+    useCelebrationStore.getState().triggerCelebration(celebType)
+
     if (!window.electronAPI) {
       const mockLog: HabitLog = {
         id: Math.random().toString(36).substring(7),

@@ -1,6 +1,8 @@
 // src/renderer/src/pages/Circle/CirclePage.tsx
 import React, { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { useModalFocusTrap } from '../../hooks/useModalFocusTrap'
+import { dialogTransition } from '../../lib/motion-tokens'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts'
 import { CircleProfile, CircleFriendship, CircleStatsCache } from '../../types'
 import { ProfileSetup } from './ProfileSetup'
@@ -20,6 +22,11 @@ export const CirclePage: React.FC = () => {
   const [friendStats, setFriendStats] = useState<CircleStatsCache[]>([])
   const [myStats, setMyStats] = useState<CircleStatsCache | null>(null)
   const [selectedProfileFriend, setSelectedProfileFriend] = useState<CircleStatsCache | null>(null)
+
+  const friendModalRef = useModalFocusTrap<HTMLDivElement>({
+    isOpen: !!selectedProfileFriend,
+    onClose: () => setSelectedProfileFriend(null)
+  })
 
   const [activeTab, setActiveTab] = useState<ActiveTab>('leaderboard')
   const [settingsSubTab, setSettingsSubTab] = useState<'privacy' | 'profile'>('privacy')
@@ -171,7 +178,7 @@ export const CirclePage: React.FC = () => {
                 Circle Hub
               </h1>
               <p className="text-xs text-zinc-500 mt-1">
-                Welcome back, <span className="text-zinc-300 font-semibold">@{profile.username}</span>. Check up on your friends! Are you doing better?
+                Welcome back, <span className="text-zinc-300 font-semibold">@{profile.username}</span>. Build accountability with friends.
               </p>
             </div>
           </div>
@@ -423,16 +430,22 @@ export const CirclePage: React.FC = () => {
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
+                transition={dialogTransition}
                 onClick={() => setSelectedProfileFriend(null)}
                 className="fixed inset-0 bg-black/75 backdrop-blur-md"
               />
 
               {/* Modal Card */}
               <motion.div
-                initial={{ scale: 0.95, opacity: 0, y: 15 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.95, opacity: 0, y: 15 }}
-                className={`w-full max-w-lg bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden shadow-2xl relative z-10 flex flex-col`}
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.95, opacity: 0 }}
+                transition={dialogTransition}
+                ref={friendModalRef}
+                tabIndex={-1}
+                role="dialog"
+                aria-modal="true"
+                className={`w-full max-w-lg bg-zinc-950 border border-zinc-900 rounded-2xl overflow-hidden shadow-2xl relative z-10 flex flex-col outline-none`}
               >
                 {/* Header glow match theme */}
                 <div className="h-1.5 w-full bg-gradient-to-r" style={{
@@ -445,7 +458,7 @@ export const CirclePage: React.FC = () => {
                     <div className="flex items-center gap-4">
                       <div className="w-14 h-14 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-3xl select-none overflow-hidden shrink-0 shadow-inner">
                         {selectedProfileFriend.avatar && (selectedProfileFriend.avatar.startsWith('data:image/') || selectedProfileFriend.avatar.startsWith('http')) ? (
-                          <img src={selectedProfileFriend.avatar} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                           <img src={selectedProfileFriend.avatar} alt="Avatar" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                         ) : (
                           selectedProfileFriend.avatar
                         )}
@@ -480,7 +493,8 @@ export const CirclePage: React.FC = () => {
 
                     <button
                       onClick={() => setSelectedProfileFriend(null)}
-                      className="p-1 px-2.5 bg-zinc-900 hover:bg-zinc-850 rounded-lg text-zinc-400 hover:text-zinc-200 border border-zinc-850 text-xs font-black transition-all cursor-pointer"
+                      className="w-10 h-10 bg-zinc-900 hover:bg-zinc-850 rounded-lg text-zinc-400 hover:text-zinc-200 border border-zinc-850 text-sm font-black transition-all cursor-pointer flex items-center justify-center"
+                      aria-label="Close friend details"
                     >
                       ✕
                     </button>

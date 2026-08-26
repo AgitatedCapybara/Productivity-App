@@ -99,6 +99,12 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
   const [customPriority, setCustomPriority] = useState<0 | 1 | 2 | 3>(0)
   const [customProjectId, setCustomProjectId] = useState('inbox-default')
 
+  // Focus Planning states
+  const [showFocusPlanning, setShowFocusPlanning] = useState(false)
+  const [customPlanWhen, setCustomPlanWhen] = useState('')
+  const [customPlanWhere, setCustomPlanWhere] = useState('')
+  const [customPlanHow, setCustomPlanHow] = useState('')
+
   const projects = useAppStore(state => state.projects)
   const activeView = useAppStore(state => state.activeView)
   const selectedProjectId = useAppStore(state => state.selectedProjectId)
@@ -202,7 +208,10 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
       priority: customPriority,
       project_id: projectId !== undefined ? projectId : (customProjectId === 'inbox-default' ? null : customProjectId),
       isManuallyOverridden,
-      ignoredPhrases
+      ignoredPhrases,
+      plan_when: customPlanWhen || null,
+      plan_where: customPlanWhere || null,
+      plan_how: customPlanHow || null
     }
 
     createTask(inputValue, overrides)
@@ -213,6 +222,10 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
     setIsManuallyOverridden(false)
     setShowShakeAlert(false)
     setShake(false)
+    setCustomPlanWhen('')
+    setCustomPlanWhere('')
+    setCustomPlanHow('')
+    setShowFocusPlanning(false)
     
     // Show success checkmark briefly without closing the bar
     setShowSuccess(true)
@@ -385,7 +398,7 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
                     <div className="grid grid-cols-2 gap-3">
                       {/* Date */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Due Date</label>
+                        <label className="text-[13px] text-white/60">Due Date</label>
                         <input
                           type="date"
                           value={customDueDate}
@@ -393,13 +406,13 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
                             setCustomDueDate(e.target.value)
                             setIsManuallyOverridden(true)
                           }}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] color-scheme-dark"
+                          className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all color-scheme-dark"
                         />
                       </div>
 
                       {/* Time */}
                       <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Due Time</label>
+                        <label className="text-[13px] text-white/60">Due Time</label>
                         <input
                           type="time"
                           value={customDueTime}
@@ -407,7 +420,7 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
                             setCustomDueTime(e.target.value)
                             setIsManuallyOverridden(true)
                           }}
-                          className="w-full bg-[var(--bg-elevated)] border border-[var(--border-default)] rounded-lg px-2.5 py-1.5 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent-primary)] color-scheme-dark"
+                          className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all color-scheme-dark"
                         />
                       </div>
                     </div>
@@ -473,6 +486,67 @@ export function QuickAdd({ projectId }: QuickAddProps = {}) {
                           ))}
                         </select>
                       </div>
+                    </div>
+
+                    {/* Focus Planning Expandable Section */}
+                    <div className="border-t border-[var(--border-subtle)]/40 pt-3 flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowFocusPlanning(!showFocusPlanning)}
+                        className="text-[11px] font-bold uppercase tracking-wider text-purple-400 hover:text-purple-300 flex items-center gap-1.5 transition cursor-pointer select-none self-start"
+                      >
+                        <span className="inline-block w-3 text-center">{showFocusPlanning ? '▼' : '▶'}</span>
+                        <span>Focus Planning (Intentions - Optional)</span>
+                      </button>
+
+                      {showFocusPlanning && (
+                        <div className="flex flex-col gap-3 pl-3 border-l border-purple-500/20 mt-1">
+                          {/* When */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[13px] text-white/60">When will you do this?</label>
+                            <input
+                              type="text"
+                              placeholder="e.g., Tomorrow at 10:00 AM after morning standup"
+                              value={customPlanWhen}
+                              onChange={(e) => {
+                                setCustomPlanWhen(e.target.value)
+                                setIsManuallyOverridden(true)
+                              }}
+                              className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all"
+                            />
+                          </div>
+
+                          {/* Where */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[13px] text-white/60">Where will you do this?</label>
+                            <input
+                              type="text"
+                              placeholder="e.g., At my desk with headphones on"
+                              value={customPlanWhere}
+                              onChange={(e) => {
+                                setCustomPlanWhere(e.target.value)
+                                setIsManuallyOverridden(true)
+                              }}
+                              className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all"
+                            />
+                          </div>
+
+                          {/* How */}
+                          <div className="flex flex-col gap-1">
+                            <label className="text-[13px] text-white/60">How (immediate micro-action to start)?</label>
+                            <input
+                              type="text"
+                              placeholder="e.g., Open the index.html file and write one paragraph"
+                              value={customPlanHow}
+                              onChange={(e) => {
+                                setCustomPlanHow(e.target.value)
+                                setIsManuallyOverridden(true)
+                              }}
+                              className="text-[17px] p-2 min-h-10 bg-zinc-800 rounded-lg border border-zinc-700/50 focus-visible:ring-2 focus-visible:ring-purple-400 placeholder:text-white/30 text-zinc-100 outline-none w-full transition-all"
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Reset Controls footer */}

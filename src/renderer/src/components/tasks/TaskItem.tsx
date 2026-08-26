@@ -1,6 +1,7 @@
+// src/renderer/src/components/tasks/TaskItem.tsx
 import React, { useState } from 'react'
 import { motion } from 'motion/react'
-import { GripVertical, Check, MoreHorizontal, Play, Square, Trash2, X } from 'lucide-react'
+import { GripVertical, Check, MoreHorizontal, Play, Square, Trash2, X, FileText, Sparkles } from 'lucide-react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { Task } from '../../types'
@@ -37,14 +38,57 @@ export const TaskItem = React.memo(function TaskItem({
   isSelected,
   onSelect
 }: TaskItemProps) {
-  const [isEditing, setIsEditing] = useState(false)
+  const editingTaskId = useAppStore(state => state.editingTaskId)
+  const setEditingTaskId = useAppStore(state => state.setEditingTaskId)
+  const setEditingTaskDetailsId = useAppStore(state => state.setEditingTaskDetailsId)
+  const isEditing = editingTaskId === task.id
+  const setIsEditing = (val: boolean) => setEditingTaskId(val ? task.id : null)
+
   const [editTitle, setEditTitle] = useState(task.title)
   const [isConfirmingStop, setIsConfirmingStop] = useState(false)
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false)
   const projects = useAppStore(state => state.projects)
   const activeTaskId = useAppStore(state => state.activeTaskId)
+  const highlightedTaskId = useAppStore(state => state.highlightedTaskId)
+  const setHighlightedTaskId = useAppStore(state => state.setHighlightedTaskId)
+  const setActiveView = useAppStore(state => state.setActiveView)
+  const densitySetting = useAppStore(state => state.densitySetting)
+  const keyboardSelectedTaskId = useAppStore(state => state.keyboardSelectedTaskId)
+  const featureVisibility = useAppStore(state => state.featureVisibility)
   const { startSession, stopSession } = useTasks()
   const inputRef = React.useRef<HTMLInputElement | null>(null)
+
+  const [hasNote, setHasNote] = useState(false)
+
+  React.useEffect(() => {
+    if (window.electronAPI) {
+      window.electronAPI.getNotesByParent('task', task.id).then(list => {
+        setHasNote(list && list.length > 0)
+      }).catch(console.error)
+    }
+  }, [task.id, useAppStore(state => state.tasksRevision)])
+
+  const handleOpenNotes = async () => {
+    if (!window.electronAPI) return
+    try {
+      const existing = await window.electronAPI.getNotesByParent('task', task.id)
+      if (existing && existing.length > 0) {
+        localStorage.setItem('selected_notes_view_id', existing[0].id)
+        setActiveView('notes')
+      } else {
+        const newNote = await window.electronAPI.createNote({
+          title: `Note: ${task.title}`,
+          body_md: `# Note: ${task.title}\n\nTask Description: ${task.notes || 'No description'}\n\n`,
+          parent_type: 'task',
+          parent_id: task.id
+        })
+        localStorage.setItem('selected_notes_view_id', newNote.id)
+        setActiveView('notes')
+      }
+    } catch (e) {
+      console.error('Failed notes navigation/creation:', e)
+    }
+  }
 
   const startEditing = () => {
     setEditTitle(task.title)
@@ -57,6 +101,31 @@ export const TaskItem = React.memo(function TaskItem({
       inputRef.current.select()
     }
   }, [isEditing])
+
+  React.useEffect(() => {
+    if (highlightedTaskId === task.id) {
+       const el = document.querySelector(`[data-task-id="${task.id}"]`)
+       if (el) {
+         setTimeout(() => {
+           el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+         }, 80)
+       }
+       const timer = setTimeout(() => {
+         setHighlightedTaskId(null)
+       }, 3000)
+       return () => clearTimeout(timer)
+    }
+    return undefined
+  }, [highlightedTaskId, task.id, setHighlightedTaskId])
+
+  React.useEffect(() => {
+    if (keyboardSelectedTaskId === task.id) {
+       const el = document.querySelector(`[data-task-id="${task.id}"]`)
+       if (el) {
+         el.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+       }
+    }
+  }, [keyboardSelectedTaskId, task.id])
 
   const {
     attributes,
@@ -135,8 +204,10 @@ export const TaskItem = React.memo(function TaskItem({
       ) : (
         <button
           onClick={() => onComplete?.(task.id)}
-          className={cn(
-            "w-4 h-4 rounded-full border flex flex-shrink-0 items-center justify-center ml-1 mr-3 transition-colors cursor-pointer",
+          className="w-10 h-10 flex flex-shrink-0 items-center justify-center ml-1 mr-1 hover:bg-[var(--bg-elevated)] rounded-full transition-colors cursor-pointer"
+        >
+          <div className={cn(
+            "w-4 h-4 rounded-full border flex flex-shrink-0 items-center justify-center transition-colors",
             task.status === 'done'
               ? "bg-[var(--color-success)] border-[var(--color-success)] text-white"
               : task.priority === 3
@@ -146,9 +217,9 @@ export const TaskItem = React.memo(function TaskItem({
                   : task.priority === 1
                     ? "border-zinc-500 bg-zinc-500/10 hover:border-zinc-400 hover:bg-zinc-500/20 text-transparent"
                     : "border-zinc-700 hover:border-zinc-400 bg-transparent text-transparent"
-          )}
-        >
-          <Check size={10} strokeWidth={3} className={task.status === 'done' ? "block" : "hidden"} />
+          )}>
+            <Check size={10} strokeWidth={3} className={task.status === 'done' ? "block" : "hidden"} />
+          </div>
         </button>
       )}
 
@@ -160,12 +231,12 @@ export const TaskItem = React.memo(function TaskItem({
             onChange={(e) => setEditTitle(e.target.value)}
             onBlur={handleEditSubmit}
             onKeyDown={handleKeyDown}
-            className="w-full bg-transparent outline-none text-[13px] text-[var(--text-primary)] font-normal border-0 p-0 focus:ring-0"
+            className="w-full bg-transparent outline-none text-[17px] text-[var(--text-primary)] font-normal border-0 p-0 focus:ring-0"
           />
         ) : (
           <div 
             className="flex items-center gap-2 overflow-hidden flex-1 cursor-text" 
-            onClick={(e) => {
+            onDoubleClick={(e) => {
               if (e.shiftKey || e.metaKey || e.ctrlKey) return
               e.stopPropagation()
               startEditing()
@@ -173,14 +244,14 @@ export const TaskItem = React.memo(function TaskItem({
           >
             <span 
               className={cn(
-                "text-[13px] font-normal truncate",
+                "text-[17px] font-normal truncate",
                 task.status === 'done' ? "line-through opacity-50 text-[var(--text-secondary)]" : 
                 task.status === 'deleted' ? "line-through opacity-60 text-[var(--text-secondary)] italic font-light" : "text-[var(--text-primary)]"
               )}
             >
               {task.title}
             </span>
-            {task.due_date && (
+            {featureVisibility.planningFields && task.due_date && (
                <span 
                  className="flex-shrink-0 text-[10px] text-[var(--text-secondary)] bg-[var(--bg-elevated)] px-1.5 py-0.5 rounded border border-[var(--border-default)] cursor-default"
                  title={(() => {
@@ -244,6 +315,16 @@ export const TaskItem = React.memo(function TaskItem({
                  {projects.find(p => p.id === task.project_id)?.name || 'Project'}
                </span>
             )}
+            {hasNote && (
+               <span 
+                 onClick={(e) => { e.stopPropagation(); handleOpenNotes(); }}
+                 className="flex-shrink-0 flex items-center gap-1 text-[10px] text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded border border-indigo-500/20 hover:bg-indigo-500/20 hover:text-indigo-300 transition cursor-pointer select-none"
+                 title="Open attached note"
+               >
+                 <FileText className="w-3 h-3 text-indigo-400" />
+                 Note
+               </span>
+            )}
           </div>
         )}
       </div>
@@ -253,7 +334,7 @@ export const TaskItem = React.memo(function TaskItem({
           onClick={handleStopClick}
           onMouseLeave={() => setIsConfirmingStop(false)}
           className={cn(
-            "relative w-6 h-6 mr-1 flex-shrink-0 flex items-center justify-center rounded-md hover:bg-[var(--bg-elevated)] transition-all group/stop",
+            "relative w-10 h-10 mr-1 flex-shrink-0 flex items-center justify-center rounded-md hover:bg-[var(--bg-elevated)] transition-all group/stop",
             isConfirmingStop ? "text-[var(--color-overdue)]" : "text-[var(--color-success)]"
           )}
           title={isConfirmingStop ? "Click again to confirm stop" : "Stop active session"}
@@ -275,7 +356,7 @@ export const TaskItem = React.memo(function TaskItem({
       ) : task.status !== 'deleted' && (
         <button 
           onClick={handlePlayClick}
-          className="w-6 h-6 flex flex-shrink-0 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-all mr-1"
+          className="w-10 h-10 flex flex-shrink-0 items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--accent-primary)] transition-all mr-1"
         >
           <Play size={14} className="fill-current" />
         </button>
@@ -294,7 +375,7 @@ export const TaskItem = React.memo(function TaskItem({
           }}
           onMouseLeave={() => setIsConfirmingDelete(false)}
           className={cn(
-            "w-6 h-6 flex flex-shrink-0 items-center justify-center rounded-md mr-1 transition-all",
+            "w-10 h-10 flex flex-shrink-0 items-center justify-center rounded-md mr-1 transition-all ml-4",
             isConfirmingDelete 
               ? "opacity-100 text-[var(--color-overdue)] bg-[var(--color-overdue)]/15 border border-[var(--color-overdue)]/30 scale-105 animate-pulse" 
               : "opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--color-overdue)]"
@@ -307,7 +388,7 @@ export const TaskItem = React.memo(function TaskItem({
 
       <DropdownMenu onOpenChange={(open) => { if (!open) setIsConfirmingDelete(false) }}>
         <DropdownMenuTrigger asChild>
-          <button className="w-6 h-6 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all ml-auto">
+          <button className="w-10 h-10 flex items-center justify-center rounded-md opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-all ml-auto">
             <MoreHorizontal size={14} />
           </button>
         </DropdownMenuTrigger>
@@ -336,9 +417,17 @@ export const TaskItem = React.memo(function TaskItem({
             <>
               <DropdownMenuItem onSelect={() => {
                  setTimeout(() => {
+                   setEditingTaskDetailsId(task.id)
+                 }, 100)
+              }}>
+                <Sparkles size={13} className="mr-2 text-indigo-400 animate-pulse" />
+                <span>Edit details...</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => {
+                 setTimeout(() => {
                    startEditing()
                  }, 100)
-              }}>Edit title</DropdownMenuItem>
+              }}>Rename title</DropdownMenuItem>
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>Set priority</DropdownMenuSubTrigger>
                 <DropdownMenuPortal>
@@ -350,6 +439,10 @@ export const TaskItem = React.memo(function TaskItem({
                   </DropdownMenuSubContent>
                 </DropdownMenuPortal>
               </DropdownMenuSub>
+              <DropdownMenuItem onSelect={handleOpenNotes}>
+                <FileText className="w-3.5 h-3.5 mr-2 text-indigo-400" strokeWidth={2} />
+                <span>Open/Create Notes</span>
+              </DropdownMenuItem>
               <DropdownMenuSub>
                 <DropdownMenuSubTrigger>Move to project</DropdownMenuSubTrigger>
                 <DropdownMenuPortal>
@@ -390,10 +483,16 @@ export const TaskItem = React.memo(function TaskItem({
     </>
   )
 
+  const isCompact = densitySetting === 'compact'
+  const itemHeight = isCompact ? 40 : 52
+
   if (isOverlay) {
     return (
       <div 
-        className="group relative flex items-center h-[40px] px-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-xl opacity-100 cursor-grabbing pointer-events-none"
+        className={cn(
+          "group relative flex items-center px-2 rounded-lg bg-[var(--bg-elevated)] border border-[var(--border-default)] shadow-xl opacity-100 cursor-grabbing pointer-events-none",
+          isCompact ? "h-[40px]" : "h-[52px]"
+        )}
       >
         {inner}
       </div>
@@ -409,21 +508,11 @@ export const TaskItem = React.memo(function TaskItem({
       initial={{ opacity: 0, height: 0, y: -4, overflow: 'hidden' }}
       animate={{ 
         opacity: isDragging ? 0.3 : 1, 
-        height: 40,
+        height: itemHeight,
         y: 0,
         transitionEnd: { overflow: 'visible' }
       }}
-      exit={{ 
-        opacity: 0, 
-        height: 0, 
-        y: -4,
-        overflow: 'hidden',
-        marginTop: 0,
-        marginBottom: 0,
-        paddingTop: 0,
-        paddingBottom: 0,
-        borderWidth: 0
-      }}
+      exit={{ opacity: 0, y: -8, transition: { duration: 0.21, ease: 'easeOut' } }}
       transition={{
         height: { type: 'tween', ease: [0.16, 1, 0.3, 1], duration: 0.28 },
         opacity: { type: 'tween', ease: 'linear', duration: 0.18 },
@@ -431,16 +520,27 @@ export const TaskItem = React.memo(function TaskItem({
         layout: { type: 'spring', stiffness: 380, damping: 34 }
       }}
       className={cn(
-        "group relative flex items-center h-[40px] px-2 rounded-lg border",
-        isSelected 
-          ? "bg-[var(--bg-elevated)] border-[var(--accent-primary)] ring-1 ring-[var(--accent-primary)]" 
-          : "border-transparent hover:bg-[var(--bg-hover)]",
+        "group relative flex items-center px-2 rounded-lg border transition-all duration-155",
+        isCompact ? "h-[40px]" : "h-[52px]",
+        keyboardSelectedTaskId === task.id
+          ? "bg-purple-950/30 border-purple-500 ring-2 ring-purple-500/45 shadow-[0_0_15px_rgba(168,85,247,0.5)] z-20"
+          : isSelected 
+            ? "bg-[var(--bg-elevated)] border-[var(--accent-primary)] ring-1 ring-[var(--accent-primary)]" 
+            : highlightedTaskId === task.id
+              ? "bg-purple-950/20 border-purple-500 animate-[pulse_1.5s_infinite] shadow-[0_0_12px_rgba(168,85,247,0.3)]"
+              : "border-transparent hover:bg-[var(--bg-hover)]",
         "no-drag"
       )}
       onClick={(e) => {
+        // Set keyboard highlighted task on click so users can highlight tasks
+        useAppStore.getState().setKeyboardSelectedTaskId(task.id)
         if (e.currentTarget.contains(e.target as Node)) {
           onSelect?.(e, task.id)
         }
+      }}
+      onDoubleClick={(e) => {
+        e.stopPropagation()
+        setEditingTaskDetailsId(task.id)
       }}
     >
       {inner}
