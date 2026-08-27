@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import * as chrono from 'chrono-node'
 import { useAppStore } from '../store/useAppStore'
 import { useCelebrationStore } from '../store/useCelebrationStore'
-import type { CreateTaskInput, UpdateTaskInput } from '../types'
+import type { CreateTaskInput, UpdateTaskInput, View } from '../types'
 import { getNextOccurrenceDate } from '../lib/recurrence'
 
 export function splitChronoText(text: string): string[] {
@@ -283,14 +283,61 @@ export function parseTaskInput(
   }
 }
 
-const EMPTY_ARRAY: any[] = []
+export function useTasks(
+  enableLoading?: boolean,
+  view?: View | 'focus-workspace' | string,
+  silent?: boolean
+): ReturnType<typeof useTasksInternal>
+export function useTasks(
+  enableLoading?: boolean,
+  silent?: boolean
+): ReturnType<typeof useTasksInternal>
+export function useTasks(
+  view: View | 'focus-workspace' | string,
+  silent?: boolean
+): ReturnType<typeof useTasksInternal>
+export function useTasks(
+  arg1?: boolean | View | 'focus-workspace' | string,
+  arg2?: boolean | View | 'focus-workspace' | string,
+  arg3?: boolean
+) {
+  return useTasksInternal(arg1, arg2, arg3)
+}
 
-export function useTasks(enableLoading = false, viewOverride?: string) {
+function useTasksInternal(
+  arg1?: boolean | View | 'focus-workspace' | string,
+  arg2?: boolean | View | 'focus-workspace' | string,
+  arg3?: boolean
+) {
+  let enableLoading = false
+  let explicitView: string | undefined = undefined
+  let silent = false
+
+  if (typeof arg1 === 'boolean') {
+    enableLoading = arg1
+    if (typeof arg2 === 'string') {
+      explicitView = arg2
+      if (typeof arg3 === 'boolean') {
+        silent = arg3
+      }
+    } else if (typeof arg2 === 'boolean') {
+      silent = arg2
+    }
+  } else if (typeof arg1 === 'string') {
+    enableLoading = true
+    explicitView = arg1
+    if (typeof arg2 === 'boolean') {
+      silent = arg2
+    }
+  }
+  const tasks = useAppStore(state => state.tasks)
+  const completedTasks = useAppStore(state => state.completedTasks)
   const deletedTasks = useAppStore(state => state.deletedTasks)
   const error = useAppStore(state => state.error)
-  const setTasksForView = useAppStore(state => state.setTasksForView)
-  const setCompletedTasksForView = useAppStore(state => state.setCompletedTasksForView)
+  const setTasks = useAppStore(state => state.setTasks)
+  const setCompletedTasks = useAppStore(state => state.setCompletedTasks)
   const setDeletedTasks = useAppStore(state => state.setDeletedTasks)
+  const setTaskData = useAppStore(state => state.setTaskData)
   const addCompletedTask = useAppStore(state => state.addCompletedTask)
   const addTask = useAppStore(state => state.addTask)
   const updateStoreTask = useAppStore(state => state.updateTask)
@@ -298,28 +345,12 @@ export function useTasks(enableLoading = false, viewOverride?: string) {
   const reorderStoreTasks = useAppStore(state => state.reorderTasks)
   const setError = useAppStore(state => state.setError)
   const incrementTasksRevision = useAppStore(state => state.incrementTasksRevision)
-
   const setActiveSession = useAppStore(state => state.setActiveSession)
   const setActiveTaskId = useAppStore(state => state.setActiveTaskId)
   const tasksRevision = useAppStore(state => state.tasksRevision)
   const [isLoading, setLoading] = useState(false)
   const activeView = useAppStore(state => state.activeView)
   const selectedProjectId = useAppStore(state => state.selectedProjectId)
-
-  // Resolve targetViewKey
-  let targetViewKey = 'today'
-  if (viewOverride) {
-    if (viewOverride === 'project') {
-      targetViewKey = selectedProjectId ? `project-${selectedProjectId}` : 'project'
-    } else {
-      targetViewKey = viewOverride
-    }
-  } else {
-    targetViewKey = activeView === 'project' && selectedProjectId ? `project-${selectedProjectId}` : activeView
-  }
-
-  const tasks = useAppStore(state => state.tasksByView[targetViewKey] || EMPTY_ARRAY)
-  const completedTasks = useAppStore(state => state.completedTasksByView[targetViewKey] || EMPTY_ARRAY)
 
   const loadTasks = useCallback(async (silent = false): Promise<void> => {
     if (!silent) setLoading(true)
@@ -331,50 +362,60 @@ export function useTasks(enableLoading = false, viewOverride?: string) {
     }
     
     try {
-      if (window.electronAPI.getDeletedTasks) {
-        const dl = await window.electronAPI.getDeletedTasks()
-        setDeletedTasks(dl)
-      } else {
-        setDeletedTasks([])
-      }
+      const currentActiveView = explicitView || useAppStore.getState().activeView
+      const currentSelectedProjectId = useAppStore.getState().selectedProjectId
 
-      if (targetViewKey === 'today') {
-        const [tasksResult, completedResult] = await Promise.allSettled([
-          window.electronAPI.getTasksForToday(),
-          window.electronAPI.getTodayCompletedTasks()
-        ])
-        if (tasksResult.status === 'fulfilled') setTasksForView('today', tasksResult.value)
-        else setTasksForView('today', [])
-        if (completedResult.status === 'fulfilled') setCompletedTasksForView('today', completedResult.value)
-        else setCompletedTasksForView('today', [])
-      } else if (targetViewKey === 'upcoming') {
-        const upcomingTasks = await window.electronAPI.getTasksUpcoming()
-        setTasksForView('upcoming', upcomingTasks)
-        setCompletedTasksForView('upcoming', [])
-      } else if (targetViewKey.startsWith('project-')) {
-        const projectId = targetViewKey.replace('project-', '')
-        const projectTasks = await window.electronAPI.getTasksByProject(projectId)
-        setTasksForView(targetViewKey, projectTasks)
-        setCompletedTasksForView(targetViewKey, [])
+      const deletedPromise = window.electronAPI.getDeletedTasks
+        ? window.electronAPI.getDeletedTasks()
+        : Promise.resolve([])
+
+      let tasksPromise: Promise<any[]>
+      let completedPromise: Promise<any[]>
+
+      if (currentActiveView === 'today') {
+        tasksPromise = window.electronAPI.getTasksForToday ? window.electronAPI.getTasksForToday() : Promise.resolve([])
+        completedPromise = window.electronAPI.getTodayCompletedTasks ? window.electronAPI.getTodayCompletedTasks() : Promise.resolve([])
+      } else if (currentActiveView === 'upcoming') {
+        tasksPromise = window.electronAPI.getTasksUpcoming ? window.electronAPI.getTasksUpcoming() : Promise.resolve([])
+        completedPromise = Promise.resolve([])
+      } else if (currentActiveView === 'project') {
+        if (!currentSelectedProjectId) {
+          if (!silent) setLoading(false)
+          return
+        }
+        tasksPromise = window.electronAPI.getTasksByProject ? window.electronAPI.getTasksByProject(currentSelectedProjectId) : Promise.resolve([])
+        completedPromise = Promise.resolve([])
       } else {
         // Fallback for views like Inbox: load all tasks
-        try {
-          const allTasks = await window.electronAPI.getTasks()
-          const active = allTasks.filter((t: any) => t.status !== 'done' && t.status !== 'deleted')
-          const completed = allTasks.filter((t: any) => t.status === 'done')
-          setTasksForView(targetViewKey, active)
-          setCompletedTasksForView(targetViewKey, completed)
-        } catch (err) {
-          setTasksForView(targetViewKey, [])
-          setCompletedTasksForView(targetViewKey, [])
-        }
+        tasksPromise = window.electronAPI.getTasks ? window.electronAPI.getTasks().then((all: any[]) =>
+          all.filter((t: any) => t.status !== 'done' && t.status !== 'deleted')
+        ) : Promise.resolve([])
+        completedPromise = window.electronAPI.getTasks ? window.electronAPI.getTasks().then((all: any[]) =>
+          all.filter((t: any) => t.status === 'done')
+        ) : Promise.resolve([])
       }
+
+      const [tasksRes, completedRes, deletedRes] = await Promise.allSettled([
+        tasksPromise,
+        completedPromise,
+        deletedPromise
+      ])
+
+      const finalTasks = tasksRes.status === 'fulfilled' ? tasksRes.value : []
+      const finalCompleted = completedRes.status === 'fulfilled' ? completedRes.value : []
+      const finalDeleted = deletedRes.status === 'fulfilled' ? deletedRes.value : []
+
+      setTaskData({
+        tasks: finalTasks,
+        completedTasks: finalCompleted,
+        deletedTasks: finalDeleted
+      })
     } catch (err: any) {
       setError(err.message || 'Failed to load tasks')
     } finally {
       if (!silent) setLoading(false)
     }
-  }, [targetViewKey, setDeletedTasks, setTasksForView, setCompletedTasksForView, setError, setLoading])
+  }, [explicitView, setTaskData, setError, setLoading])
 
   const loadTasksRef = useRef(loadTasks)
   useEffect(() => {
@@ -384,8 +425,8 @@ export function useTasks(enableLoading = false, viewOverride?: string) {
   useEffect(() => {
     if (!enableLoading) return
     // Standard load for view/project changes
-    loadTasksRef.current(false)
-  }, [targetViewKey, enableLoading])
+    loadTasksRef.current(silent)
+  }, [activeView, selectedProjectId, enableLoading, silent, explicitView])
 
   const prevRevision = useRef(tasksRevision)
   const debounceTimer = useRef<NodeJS.Timeout | null>(null)
@@ -650,12 +691,12 @@ export function useTasks(enableLoading = false, viewOverride?: string) {
       incrementTasksRevision()
     } catch (err: any) {
       // Revert on failure
-      setTasksForView(targetViewKey, previousTasks)
-      setCompletedTasksForView(targetViewKey, previousCompleted)
+      setTasks(previousTasks)
+      setCompletedTasks(previousCompleted)
       setDeletedTasks(previousDeleted)
       setError(err.message || 'Failed to delete task')
     }
-  }, [removeTask, setDeletedTasks, incrementTasksRevision, setTasksForView, setCompletedTasksForView, setError, targetViewKey])
+  }, [removeTask, setDeletedTasks, incrementTasksRevision, setTasks, setCompletedTasks, setError])
 
   const purgeDeletedTasks = useCallback(async (): Promise<void> => {
     const { deletedTasks } = useAppStore.getState()

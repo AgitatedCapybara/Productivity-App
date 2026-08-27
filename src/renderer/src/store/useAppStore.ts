@@ -6,8 +6,6 @@ export interface AppState {
   tasks: Task[]
   completedTasks: Task[]
   deletedTasks: Task[]
-  tasksByView: Record<string, Task[]>
-  completedTasksByView: Record<string, Task[]>
   projects: Project[]
   activeView: View
   selectedProjectId: string | null
@@ -23,9 +21,8 @@ export interface AppState {
   error: string | null
   setTasks: (tasks: Task[]) => void
   setCompletedTasks: (tasks: Task[]) => void
-  setTasksForView: (view: string, tasks: Task[]) => void
-  setCompletedTasksForView: (view: string, tasks: Task[]) => void
   setDeletedTasks: (tasks: Task[]) => void
+  setTaskData: (data: { tasks: Task[]; completedTasks: Task[]; deletedTasks?: Task[] }) => void
   addCompletedTask: (task: Task) => void
   addTask: (task: Task) => void
   updateTask: (task: Task) => void
@@ -136,8 +133,6 @@ export const useAppStore = create<AppState>()(immer((set) => ({
   tasks: [],
   completedTasks: [],
   deletedTasks: [],
-  tasksByView: {},
-  completedTasksByView: {},
   projects: [],
   activeView: 'today',
   selectedProjectId: null,
@@ -228,79 +223,21 @@ export const useAppStore = create<AppState>()(immer((set) => ({
     }
   }),
 
-  setTasksForView: (view, tasks) => set((state) => {
-    const currentViewTasks = state.tasksByView[view] || []
-    const tempTasks = currentViewTasks.filter(
-      (t) => t.id.startsWith('temp-') || (t.client_id && t.client_id.startsWith('temp-'))
-    )
-    
-    const existingMap = new Map(currentViewTasks.map(t => [t.id, t.client_id]))
-    
-    const loadedMapped = tasks.map((t) => {
-      let clientId = existingMap.get(t.id)
-      
-      if (!clientId) {
-        const matchingTemp = tempTasks.find(pt => 
-          pt.title === t.title &&
-          pt.project_id === t.project_id &&
-          pt.due_date === t.due_date &&
-          pt.priority === t.priority
-        )
-        if (matchingTemp) {
-          clientId = matchingTemp.client_id || matchingTemp.id
-          const idx = tempTasks.indexOf(matchingTemp)
-          if (idx !== -1) tempTasks.splice(idx, 1)
-        }
-      }
-      
-      return {
-        ...t,
-        client_id: clientId || t.id
-      }
-    })
-
-    const loadedClientIds = new Set(loadedMapped.map(l => l.client_id))
-    const outstandingTemp = tempTasks.filter(
-      (pt) => !loadedClientIds.has(pt.id) && !(pt.client_id && loadedClientIds.has(pt.client_id))
-    )
-
-    const finalTasks = [...loadedMapped, ...outstandingTemp]
-    state.tasksByView[view] = finalTasks
-
-    const activeViewKey = state.activeView === 'project' && state.selectedProjectId ? `project-${state.selectedProjectId}` : state.activeView
-    if (view === activeViewKey) {
-      state.tasks = finalTasks
-    }
-  }),
-
-  setCompletedTasksForView: (view, tasks) => set((state) => {
-    const currentViewCompleted = state.completedTasksByView[view] || []
-    const existingMap = new Map(currentViewCompleted.map(t => [t.id, t.client_id]))
-    const finalCompleted = tasks.map((t) => ({
-      ...t,
-      client_id: existingMap.get(t.id) || t.id
-    }))
-    state.completedTasksByView[view] = finalCompleted
-
-    const activeViewKey = state.activeView === 'project' && state.selectedProjectId ? `project-${state.selectedProjectId}` : state.activeView
-    if (view === activeViewKey) {
-      state.completedTasks = finalCompleted
-    }
-  }),
-
   setTasks: (tasks) => set((state) => {
-    const activeViewKey = state.activeView === 'project' && state.selectedProjectId ? `project-${state.selectedProjectId}` : state.activeView
-    const currentViewTasks = state.tasksByView[activeViewKey] || []
-    const tempTasks = currentViewTasks.filter(
+    // 1. Find all active temp tasks in current state (or ones with temp client_ids)
+    const tempTasks = state.tasks.filter(
       (t) => t.id.startsWith('temp-') || (t.client_id && t.client_id.startsWith('temp-'))
     )
     
-    const existingMap = new Map(currentViewTasks.map(t => [t.id, t.client_id]))
+    // 2. Map existing database IDs to their client_ids
+    const existingMap = new Map(state.tasks.map(t => [t.id, t.client_id]))
     
+    // 3. Map the incoming tasks from DB
     const loadedMapped = tasks.map((t) => {
       let clientId = existingMap.get(t.id)
       
       if (!clientId) {
+        // Try to match by properties to reconcile a newly created server task with its original temp task
         const matchingTemp = tempTasks.find(pt => 
           pt.title === t.title &&
           pt.project_id === t.project_id &&
@@ -309,6 +246,7 @@ export const useAppStore = create<AppState>()(immer((set) => ({
         )
         if (matchingTemp) {
           clientId = matchingTemp.client_id || matchingTemp.id
+          // Remove from local list so we don't double-match
           const idx = tempTasks.indexOf(matchingTemp)
           if (idx !== -1) tempTasks.splice(idx, 1)
         }
@@ -320,26 +258,21 @@ export const useAppStore = create<AppState>()(immer((set) => ({
       }
     })
 
+    // 4. Any outstanding temp tasks that were not matched (still in-progress on backend)
     const loadedClientIds = new Set(loadedMapped.map(l => l.client_id))
     const outstandingTemp = tempTasks.filter(
       (pt) => !loadedClientIds.has(pt.id) && !(pt.client_id && loadedClientIds.has(pt.client_id))
     )
 
-    const finalTasks = [...loadedMapped, ...outstandingTemp]
-    state.tasksByView[activeViewKey] = finalTasks
-    state.tasks = finalTasks
+    state.tasks = [...loadedMapped, ...outstandingTemp]
   }),
   
   setCompletedTasks: (tasks) => set((state) => {
-    const activeViewKey = state.activeView === 'project' && state.selectedProjectId ? `project-${state.selectedProjectId}` : state.activeView
-    const currentViewCompleted = state.completedTasksByView[activeViewKey] || []
-    const existingMap = new Map(currentViewCompleted.map(t => [t.id, t.client_id]))
-    const finalCompleted = tasks.map((t) => ({
+    const existingMap = new Map(state.completedTasks.map(t => [t.id, t.client_id]))
+    state.completedTasks = tasks.map((t) => ({
       ...t,
       client_id: existingMap.get(t.id) || t.id
     }))
-    state.completedTasksByView[activeViewKey] = finalCompleted
-    state.completedTasks = finalCompleted
   }),
 
   setDeletedTasks: (tasks) => set((state) => {
@@ -349,45 +282,64 @@ export const useAppStore = create<AppState>()(immer((set) => ({
       client_id: existingMap.get(t.id) || t.id
     }))
   }),
-  
-  addCompletedTask: (task) => set((state) => {
-    state.completedTasks.unshift(task)
-    const activeViewKey = state.activeView === 'project' && state.selectedProjectId ? `project-${state.selectedProjectId}` : state.activeView
-    if (!state.completedTasksByView[activeViewKey]) {
-      state.completedTasksByView[activeViewKey] = []
+
+  setTaskData: ({ tasks, completedTasks, deletedTasks }) => set((state) => {
+    // 1. Tasks mapping & temp task reconciliation
+    const tempTasks = state.tasks.filter(
+      (t) => t.id.startsWith('temp-') || (t.client_id && t.client_id.startsWith('temp-'))
+    )
+    const existingMap = new Map(state.tasks.map(t => [t.id, t.client_id]))
+    const loadedMapped = tasks.map((t) => {
+      let clientId = existingMap.get(t.id)
+      if (!clientId) {
+        const matchingTemp = tempTasks.find(pt => 
+          pt.title === t.title &&
+          pt.project_id === t.project_id &&
+          pt.due_date === t.due_date &&
+          pt.priority === t.priority
+        )
+        if (matchingTemp) {
+          clientId = matchingTemp.client_id || matchingTemp.id
+          const idx = tempTasks.indexOf(matchingTemp)
+          if (idx !== -1) tempTasks.splice(idx, 1)
+        }
+      }
+      return {
+        ...t,
+        client_id: clientId || t.id
+      }
+    })
+    const loadedClientIds = new Set(loadedMapped.map(l => l.client_id))
+    const outstandingTemp = tempTasks.filter(
+      (pt) => !loadedClientIds.has(pt.id) && !(pt.client_id && loadedClientIds.has(pt.client_id))
+    )
+    state.tasks = [...loadedMapped, ...outstandingTemp]
+
+    // 2. Completed tasks
+    const existingCompletedMap = new Map(state.completedTasks.map(t => [t.id, t.client_id]))
+    state.completedTasks = completedTasks.map((t) => ({
+      ...t,
+      client_id: existingCompletedMap.get(t.id) || t.id
+    }))
+
+    // 3. Deleted tasks (if provided)
+    if (deletedTasks) {
+      const existingDeletedMap = new Map(state.deletedTasks.map(t => [t.id, t.client_id]))
+      state.deletedTasks = deletedTasks.map((t) => ({
+        ...t,
+        client_id: existingDeletedMap.get(t.id) || t.id
+      }))
     }
-    state.completedTasksByView[activeViewKey].unshift(task)
   }),
   
-  addTask: (task) => set((state) => {
-    state.tasks.push(task)
-    const activeViewKey = state.activeView === 'project' && state.selectedProjectId ? `project-${state.selectedProjectId}` : state.activeView
-    if (!state.tasksByView[activeViewKey]) {
-      state.tasksByView[activeViewKey] = []
-    }
-    state.tasksByView[activeViewKey].push(task)
-  }),
+  addCompletedTask: (task) => set((state) => { state.completedTasks.unshift(task) }),
+  
+  addTask: (task) => set((state) => { state.tasks.push(task) }),
   
   updateTask: (task) => set((state) => {
     const index = state.tasks.findIndex((t: Task) => t.id === task.id)
     if (index !== -1) {
       state.tasks[index] = task
-    }
-    const activeViewKey = state.activeView === 'project' && state.selectedProjectId ? `project-${state.selectedProjectId}` : state.activeView
-    const viewTasks = state.tasksByView[activeViewKey] || []
-    const vIndex = viewTasks.findIndex((t: Task) => t.id === task.id)
-    if (vIndex !== -1) {
-      viewTasks[vIndex] = task
-    }
-    // Also update completed if it is completed
-    const cIndex = state.completedTasks.findIndex((t: Task) => t.id === task.id)
-    if (cIndex !== -1) {
-      state.completedTasks[cIndex] = task
-    }
-    const viewCompleted = state.completedTasksByView[activeViewKey] || []
-    const vcIndex = viewCompleted.findIndex((t: Task) => t.id === task.id)
-    if (vcIndex !== -1) {
-      viewCompleted[vcIndex] = task
     }
   }),
   
@@ -396,22 +348,6 @@ export const useAppStore = create<AppState>()(immer((set) => ({
     if (index !== -1) {
       state.tasks.splice(index, 1)
     }
-    const activeViewKey = state.activeView === 'project' && state.selectedProjectId ? `project-${state.selectedProjectId}` : state.activeView
-    const viewTasks = state.tasksByView[activeViewKey] || []
-    const vIndex = viewTasks.findIndex((t: Task) => t.id === id)
-    if (vIndex !== -1) {
-      viewTasks.splice(vIndex, 1)
-    }
-    // Also remove from completed
-    const cIndex = state.completedTasks.findIndex((t: Task) => t.id === id)
-    if (cIndex !== -1) {
-      state.completedTasks.splice(cIndex, 1)
-    }
-    const viewCompleted = state.completedTasksByView[activeViewKey] || []
-    const vcIndex = viewCompleted.findIndex((t: Task) => t.id === id)
-    if (vcIndex !== -1) {
-      viewCompleted.splice(vcIndex, 1)
-    }
   }),
   
   reorderTasks: (orderedIds) => set((state) => {
@@ -419,14 +355,6 @@ export const useAppStore = create<AppState>()(immer((set) => ({
       const taskIndex = state.tasks.findIndex((t: Task) => t.id === id)
       if (taskIndex !== -1) {
         state.tasks[taskIndex].sort_order = index
-      }
-    })
-    const activeViewKey = state.activeView === 'project' && state.selectedProjectId ? `project-${state.selectedProjectId}` : state.activeView
-    const viewTasks = state.tasksByView[activeViewKey] || []
-    orderedIds.forEach((id, index) => {
-      const vIndex = viewTasks.findIndex((t: Task) => t.id === id)
-      if (vIndex !== -1) {
-        viewTasks[vIndex].sort_order = index
       }
     })
   }),

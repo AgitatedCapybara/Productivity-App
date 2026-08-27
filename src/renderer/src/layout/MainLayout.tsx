@@ -1,4 +1,4 @@
-import { useEffect, useState, memo, ComponentType } from 'react'
+import { useEffect, useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { TodayView } from '../pages/TodayView'
 import { UpcomingView } from '../pages/UpcomingView'
@@ -33,10 +33,6 @@ import { Trash2, X, Sparkles, Flame, Check } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { cn } from '../lib/utils'
 
-const MemoizedView = memo(({ Component }: { Component: ComponentType<any> }) => {
-  return <Component />
-})
-
 export function MainLayout() {
   const [showCloseConfirm, setShowCloseConfirm] = useState(false)
   const [isConfirmingBulk, setIsConfirmingBulk] = useState(false)
@@ -67,47 +63,6 @@ export function MainLayout() {
   const sidebarExpanded = useAppStore(state => state.sidebarExpanded)
   const inspectorVisible = useAppStore(state => state.inspectorVisible)
   const toggleInspector = useAppStore(state => state.toggleInspector)
-
-  const featureVisibility = useAppStore(state => state.featureVisibility)
-  const selectedProjectId = useAppStore(state => state.selectedProjectId)
-  const [visibleViews, setVisibleViews] = useState<Record<string, boolean>>({
-    today: true,
-    upcoming: true,
-    calendar: true,
-    plan: true,
-    habits: true,
-    notes: true,
-    views: true,
-    analytics: true,
-    deepwork: true,
-    circle: true,
-    inbox: true
-  })
-
-  useEffect(() => {
-    const loadPreferences = async () => {
-      const keys = ['today', 'upcoming', 'calendar', 'plan', 'habits', 'notes', 'views', 'analytics', 'deepwork', 'circle', 'inbox']
-      const updated: Record<string, boolean> = {}
-
-      for (const key of keys) {
-        if (window.electronAPI && window.electronAPI.getSetting) {
-          try {
-            const val = await window.electronAPI.getSetting(`sidebar.view.${key}`, 'true')
-            updated[key] = val !== 'false'
-          } catch (e) {
-            updated[key] = localStorage.getItem(`sidebar.view.${key}`) !== 'false'
-          }
-        } else {
-          updated[key] = localStorage.getItem(`sidebar.view.${key}`) !== 'false'
-        }
-      }
-      setVisibleViews(updated)
-    }
-
-    loadPreferences()
-    const pollInterval = setInterval(loadPreferences, 1500)
-    return () => clearInterval(pollInterval)
-  }, [])
 
   useEffect(() => {
     let lastKey = ''
@@ -384,37 +339,38 @@ export function MainLayout() {
     setIsConfirmingBulk(false)
   }
 
-  const isSessionActive = !!activeSessionId
-
-  const isViewVisible = (viewId: string) => {
-    if (featureVisibility) {
-      if (viewId === 'today' && !featureVisibility.todayView) return false
-      if (viewId === 'deepwork' && !featureVisibility.focusTimer) return false
-      if (viewId === 'views' && !featureVisibility.notesBoard) return false
-      if (viewId === 'notes' && !featureVisibility.notesBoard) return false
-      if (viewId === 'analytics' && !featureVisibility.wellnessAnalytics) return false
-      if (viewId === 'habits' && !featureVisibility.habitTracking) return false
-      if (viewId === 'plan' && !featureVisibility.aiSuggestions) return false
+  const renderView = () => {
+    switch (activeView) {
+      case 'today':
+        return <TodayView />
+      case 'upcoming':
+        return <UpcomingView />
+      case 'calendar':
+        return <CalendarView />
+      case 'plan':
+        return <PlanView />
+      case 'project':
+        return <ProjectView />
+      case 'habits':
+        return <HabitsView />
+      case 'analytics':
+        return <AnalyticsView />
+      case 'deepwork':
+        return <DeepWorkView />
+      case 'circle':
+        return <CirclePage />
+      case 'notes':
+        return <NotesView />
+      case 'views':
+        return <ViewsView />
+      case 'inbox':
+        return <InboxView />
+      case 'settings':
+        return <SettingsView />
+      default:
+        return <TodayView />
     }
-    if (visibleViews[viewId] === false) return false
-    return true
   }
-
-  const sectionsToRender = ([
-    { id: 'today', Component: TodayView },
-    { id: 'calendar', Component: CalendarView },
-    { id: 'upcoming', Component: UpcomingView },
-    { id: 'plan', Component: PlanView },
-    { id: 'deepwork', Component: isSessionActive ? FocusWorkspaceView : DeepWorkView },
-    { id: 'habits', Component: HabitsView },
-    { id: 'analytics', Component: AnalyticsView },
-    { id: 'inbox', Component: InboxView },
-    { id: 'notes', Component: NotesView },
-    { id: 'views', Component: ViewsView },
-    { id: 'circle', Component: CirclePage },
-    { id: 'settings', Component: SettingsView },
-    selectedProjectId ? { id: 'project', Component: ProjectView } : null
-  ].filter(Boolean) as { id: string; Component: ComponentType<any> }[]).filter(item => isViewVisible(item.id))
 
   const closeConfirmationDialog = (
     <AnimatePresence>
@@ -507,6 +463,8 @@ export function MainLayout() {
     )
   }
 
+  const isSessionActive = !!activeSessionId
+
   const currentScale = pageScales?.adjustAll
     ? pageScales.globalScale
     : (pageScales?.scales?.[activeView] ?? 1.0)
@@ -533,31 +491,23 @@ export function MainLayout() {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col relative h-full overflow-hidden">
         <div 
-          className="flex-1 w-full h-full relative overflow-hidden" 
-          style={currentScale !== 1.0 ? { 
-            transform: `scale(${currentScale})`, 
-            transformOrigin: 'top left', 
-            width: `${100 / currentScale}%`, 
-            height: `${100 / currentScale}%` 
-          } : undefined}
-          id="dashboard-viewport"
+          className="flex-1 flex flex-col min-h-0 w-full overflow-hidden relative" 
+          style={currentScale !== 1.0 ? { zoom: currentScale } : undefined}
+          id="scaled-page-wrapper"
         >
-          {sectionsToRender.map((sec) => {
-            const isVisible = activeView === sec.id
-            const Component = sec.Component
-            return (
-              <div
-                key={sec.id}
-                id={`section-${sec.id}`}
-                className={cn(
-                  "w-full h-full absolute inset-0 flex flex-col overflow-hidden transform-gpu transition-all duration-200 ease-in-out",
-                  isVisible ? "opacity-100 scale-100 pointer-events-auto z-10 visible" : "opacity-0 scale-[0.99] pointer-events-none z-0 invisible"
-                )}
-              >
-                <MemoizedView Component={Component} />
-              </div>
-            )
-          })}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={(isSessionActive && activeView === 'deepwork') ? 'active-focus-workspace' : activeView}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.1, ease: 'easeOut' }}
+              className="w-full h-full flex flex-col min-h-0 overflow-hidden"
+              id="view-animate-wrapper"
+            >
+              {isSessionActive && activeView === 'deepwork' ? <FocusWorkspaceView /> : renderView()}
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         {/* Compact Habit Bar - fades out during active focus session */}

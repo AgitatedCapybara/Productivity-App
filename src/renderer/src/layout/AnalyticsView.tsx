@@ -15,7 +15,8 @@ import {
   Award,
   SlidersHorizontal,
   Calendar,
-  Compass
+  Compass,
+  Globe
 } from 'lucide-react'
 import { 
   AreaChart, 
@@ -46,6 +47,7 @@ export function AnalyticsView() {
   // Interactive Project Filter State
   const [filterProjectId, setFilterProjectId] = useState<string>('all')
   const [activeTab, setActiveTab] = useState<'focus' | 'tasks' | 'rituals'>('focus')
+  const [showAllTimeStats, setShowAllTimeStats] = useState<boolean>(false)
 
   const projects = useAppStore(state => state.projects)
   const preselectedSessionId = useAppStore(state => state.preselectedSessionId)
@@ -258,9 +260,30 @@ export function AnalyticsView() {
     return testProjId === filterProjectId
   }
 
+  // Time Bound limits for charts & timeframe filtering
+  const nowTime = Date.now()
+  const startTime = nowTime - (timeScaleDays * 24 * 60 * 60 * 1000)
+  const endTime = nowTime
+
   // Raw Sessions & Tasks filtering based on project selection
   const rawSessions = history.filter(s => s.status === 'completed' || s.durationSeconds > 10)
   const filteredSessions = rawSessions.filter(s => matchesProject(s.projectId || s.project_id))
+
+  // Timeframe sessions
+  const sessionsInTimeframe = useMemo(() => {
+    return filteredSessions.filter(s => {
+      if (!s.startedAt) return false
+      try {
+        const time = new Date(s.startedAt).getTime()
+        return time >= startTime && time <= endTime
+      } catch (e) {
+        return false
+      }
+    })
+  }, [filteredSessions, startTime, endTime])
+
+  // When showAllTimeStats is false, default to selected timeframe. When true, show full/all-time stats.
+  const effectiveSessions = showAllTimeStats ? filteredSessions : sessionsInTimeframe
 
   const activeTasks = allTasks.filter(t => t.status !== 'done' && t.status !== 'deleted')
   const doneTasks = allTasks.filter(t => t.status === 'done')
@@ -268,11 +291,21 @@ export function AnalyticsView() {
   const filteredDoneTasks = doneTasks.filter(t => matchesProject(t.project_id))
   const filteredActiveTasks = activeTasks.filter(t => matchesProject(t.project_id))
 
-  // KPI calculations based on filtered results
-  const totalSessionsCount = filteredSessions.length
-  const totalDurationSeconds = filteredSessions.reduce((acc, s) => acc + (s.durationSeconds ?? 0), 0)
-  const totalProductiveSeconds = filteredSessions.reduce((acc, s) => acc + (s.productiveSeconds ?? 0), 0)
-  const totalDistractionCount = filteredSessions.reduce((acc, s) => acc + (s.distractionCount ?? 0), 0)
+  const completedTasksInTimeframe = useMemo(() => {
+    return filteredDoneTasks.filter(t => {
+      if (!t.completed_at) return false
+      const time = new Date(t.completed_at).getTime()
+      return time >= startTime && time <= endTime
+    })
+  }, [filteredDoneTasks, startTime, endTime])
+
+  const effectiveDoneTasks = showAllTimeStats ? filteredDoneTasks : completedTasksInTimeframe
+
+  // KPI calculations based on effective (timeframe or full) results
+  const totalSessionsCount = effectiveSessions.length
+  const totalDurationSeconds = effectiveSessions.reduce((acc, s) => acc + (s.durationSeconds ?? 0), 0)
+  const totalProductiveSeconds = effectiveSessions.reduce((acc, s) => acc + (s.productiveSeconds ?? 0), 0)
+  const totalDistractionCount = effectiveSessions.reduce((acc, s) => acc + (s.distractionCount ?? 0), 0)
 
   const globalProductivePercent = totalDurationSeconds > 0 
     ? Math.round((totalProductiveSeconds / totalDurationSeconds) * 100) 
@@ -282,9 +315,9 @@ export function AnalyticsView() {
     ? Math.round(totalProductiveSeconds / (totalDistractionCount + totalSessionsCount))
     : 0
 
-  // Group distractions across filtered sessions
+  // Group distractions across effective sessions
   const appDistractionsMap: Record<string, { appName: string; durationMs: number; count: number }> = {}
-  filteredSessions.forEach(s => {
+  effectiveSessions.forEach(s => {
     if (s.distractions && Array.isArray(s.distractions)) {
       s.distractions.forEach((d: any) => {
         const app = d.appName || d.app_name || 'Unknown app'
@@ -303,11 +336,6 @@ export function AnalyticsView() {
 
   const isDirty = customInputVal.trim() !== '' && customInputVal.trim() !== String(timeScaleDays)
   const showChart = typeof timeScaleDays === 'number' && !isNaN(timeScaleDays) && timeScaleDays >= 1 && timeScaleDays <= 1000
-
-  // Time Bound limits for charts
-  const nowTime = Date.now()
-  const startTime = nowTime - (timeScaleDays * 24 * 60 * 60 * 1000)
-  const endTime = nowTime
 
   // Prepare chart data (chronological filtered sessions)
   const reversedHistory = [...filteredSessions].reverse()
@@ -430,13 +458,6 @@ export function AnalyticsView() {
   }
 
   // --- COMPLETED TASKS DATA GROUPING ---
-  // Filter done tasks that were completed within this timeframe
-  const completedTasksInTimeframe = filteredDoneTasks.filter(t => {
-    if (!t.completed_at) return false
-    const time = new Date(t.completed_at).getTime()
-    return time >= startTime && time <= endTime
-  })
-
   // Filter all tasks that were created within this timeframe and match project
   const filteredAllTasks = useMemo(() => {
     return allTasks.filter(t => matchesProject(t.project_id))
@@ -498,32 +519,32 @@ export function AnalyticsView() {
 
   // Sort completed tasks for detailed recap list (newest first)
   const sortedCompletedTasks = useMemo((): Task[] => {
-    return [...filteredDoneTasks].sort((a, b) => {
+    return [...effectiveDoneTasks].sort((a, b) => {
       const timeA = a.completed_at ? new Date(a.completed_at).getTime() : 0
       const timeB = b.completed_at ? new Date(b.completed_at).getTime() : 0
       return timeB - timeA
     })
-  }, [filteredDoneTasks])
+  }, [effectiveDoneTasks])
 
   // Completed Tasks Priority distribution
-  const p3Count = filteredDoneTasks.filter(t => t.priority === 3).length
-  const p2Count = filteredDoneTasks.filter(t => t.priority === 2).length
-  const p1Count = filteredDoneTasks.filter(t => t.priority === 1).length
-  const p0Count = filteredDoneTasks.filter(t => t.priority === 0).length
-  const totalPriCount = filteredDoneTasks.length
+  const p3Count = effectiveDoneTasks.filter(t => t.priority === 3).length
+  const p2Count = effectiveDoneTasks.filter(t => t.priority === 2).length
+  const p1Count = effectiveDoneTasks.filter(t => t.priority === 1).length
+  const p0Count = effectiveDoneTasks.filter(t => t.priority === 0).length
+  const totalPriCount = effectiveDoneTasks.length
 
   const getPriorityPct = (cnt: number): number => {
     return totalPriCount > 0 ? Math.round((cnt / totalPriCount) * 100) : 0
   }
 
   // Active vs Complete totals/velocity
-  const totalActiveAndDone = filteredDoneTasks.length + filteredActiveTasks.length
+  const totalActiveAndDone = effectiveDoneTasks.length + filteredActiveTasks.length
   const taskCompletionRate = totalActiveAndDone > 0 
-    ? Math.round((filteredDoneTasks.length / totalActiveAndDone) * 100) 
+    ? Math.round((effectiveDoneTasks.length / totalActiveAndDone) * 100) 
     : 0
 
   // Estimate accuracies
-  const tasksWithEstimates = filteredDoneTasks.filter(t => t.time_estimate_mins > 0)
+  const tasksWithEstimates = effectiveDoneTasks.filter(t => t.time_estimate_mins > 0)
   const totalEstimatedMins = tasksWithEstimates.reduce((acc, t) => acc + t.time_estimate_mins, 0)
   const totalLoggedMinsForEstimates = tasksWithEstimates.reduce((acc, t) => acc + t.time_logged_mins, 0)
   const estimationDeviationPct = totalEstimatedMins > 0 
@@ -595,6 +616,21 @@ export function AnalyticsView() {
 
         {/* Dynamic Filters panel */}
         <div className="flex items-center flex-wrap gap-3">
+          {/* Stats Scope Toggle: Timeframe (Default) vs All-Time */}
+          <button
+            onClick={() => setShowAllTimeStats(prev => !prev)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium cursor-pointer transition-all border h-8",
+              showAllTimeStats 
+                ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-200 font-semibold shadow-sm"
+                : "bg-zinc-900/60 border-zinc-800/80 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-850"
+            )}
+            title={showAllTimeStats ? "Switch to selected timeframe stats" : "View full all-time statistics"}
+          >
+            <Globe size={12} className={cn(showAllTimeStats ? "text-indigo-400" : "text-zinc-500")} />
+            <span>{showAllTimeStats ? "Full Stats (All-Time)" : `Timeframe Stats (${timeScaleDays}d)`}</span>
+          </button>
+
           {/* Project Filtering Dropdown */}
           <div className="flex items-center gap-2 bg-zinc-900/60 border border-zinc-800/80 px-2.5 py-1 rounded-xl">
             <SlidersHorizontal size={12} className="text-zinc-400 shrink-0" />
@@ -731,6 +767,27 @@ export function AnalyticsView() {
                 </div>
               ) : (
                 <div className="space-y-5">
+                  {/* SCOPE STATUS / QUICK TOGGLE */}
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-zinc-400">
+                        Scope: <span className="text-zinc-200 font-semibold">{showAllTimeStats ? "All-Time Records" : `Past ${timeScaleDays} Days`}</span>
+                      </span>
+                      <span className="text-zinc-700">·</span>
+                      <button
+                        onClick={() => setShowAllTimeStats(prev => !prev)}
+                        className="text-[11px] text-indigo-400 hover:text-indigo-300 underline underline-offset-2 transition-colors cursor-pointer"
+                      >
+                        {showAllTimeStats ? `Switch to ${timeScaleDays}d timeframe` : "Show full all-time stats"}
+                      </button>
+                    </div>
+                    {showAllTimeStats && (
+                      <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2 py-0.5 rounded-lg font-mono font-medium">
+                        All-Time Data Active
+                      </span>
+                    )}
+                  </div>
+
                   {/* PRODUCTIVITY BENTO KPI ROW */}
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
                     <div className="bg-zinc-900/35 border border-zinc-800/40 p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
@@ -738,7 +795,9 @@ export function AnalyticsView() {
                         <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block mb-1">FOCUSED SPRINT BLOCKS</span>
                         <span className="text-2xl font-black font-mono text-zinc-100">{totalSessionsCount}</span>
                       </div>
-                      <span className="text-[10px] text-zinc-500 block mt-2">Active intervals completed</span>
+                      <span className="text-[10px] text-zinc-500 block mt-2">
+                        Active intervals completed ({showAllTimeStats ? 'All Time' : `${timeScaleDays}d`})
+                      </span>
                     </div>
 
                     <div className="bg-zinc-900/35 border border-zinc-800/40 p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
@@ -1006,8 +1065,8 @@ export function AnalyticsView() {
                       </div>
 
                       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3.5 pr-1.5">
-                        {filteredSessions.length > 0 ? (
-                          filteredSessions.map((s, idx) => {
+                        {effectiveSessions.length > 0 ? (
+                          effectiveSessions.map((s, idx) => {
                             const sessionProject = projects.find(p => p.id === s.projectId || p.id === s.project_id)
                             const matchedTask = allTasks.find(t => t.id === s.taskId || t.id === s.task_id)
                             const taskTitle = s.customName || s.custom_name || s.task_title || s.taskTitle || matchedTask?.title || 'Independent Focus Block'
@@ -1191,17 +1250,40 @@ export function AnalyticsView() {
                 </div>
               ) : (
                 <div className="space-y-5">
+                  {/* SCOPE STATUS / QUICK TOGGLE */}
+                  <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-medium text-zinc-400">
+                        Scope: <span className="text-zinc-200 font-semibold">{showAllTimeStats ? "All-Time Records" : `Past ${timeScaleDays} Days`}</span>
+                      </span>
+                      <span className="text-zinc-700">·</span>
+                      <button
+                        onClick={() => setShowAllTimeStats(prev => !prev)}
+                        className="text-[11px] text-indigo-400 hover:text-indigo-300 underline underline-offset-2 transition-colors cursor-pointer"
+                      >
+                        {showAllTimeStats ? `Switch to ${timeScaleDays}d timeframe` : "Show full all-time stats"}
+                      </button>
+                    </div>
+                    {showAllTimeStats && (
+                      <span className="text-[10px] bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 px-2 py-0.5 rounded-lg font-mono font-medium">
+                        All-Time Data Active
+                      </span>
+                    )}
+                  </div>
+
                   {/* TASKS BENTO KPI ROW */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
                     <div className="bg-zinc-900/35 border border-zinc-800/40 p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
                       <div>
                         <span className="text-[9px] font-bold text-zinc-500 tracking-widest uppercase block mb-1">TASKS COMPLETED</span>
                         <div className="flex items-baseline gap-2">
-                          <span className="text-2xl font-black font-mono text-indigo-400">{filteredDoneTasks.length}</span>
+                          <span className="text-2xl font-black font-mono text-indigo-400">{effectiveDoneTasks.length}</span>
                           <span className="text-xs text-zinc-500 font-mono">/ {totalActiveAndDone}</span>
                         </div>
                       </div>
-                      <span className="text-[10px] text-indigo-400/80 block mt-2">{taskCompletionRate}% finished velocity</span>
+                      <span className="text-[10px] text-indigo-400/80 block mt-2">
+                        {taskCompletionRate}% finished velocity ({showAllTimeStats ? 'All Time' : `${timeScaleDays}d`})
+                      </span>
                     </div>
 
                     <div className="bg-zinc-900/35 border border-zinc-800/40 p-4 rounded-2xl relative overflow-hidden flex flex-col justify-between">
@@ -1403,8 +1485,8 @@ export function AnalyticsView() {
                           <p className="text-[10px] text-zinc-500 font-sans">Chronological log of solved & closed checklist tickets</p>
                         </div>
                         <div className="flex items-center gap-1 text-[10px] text-zinc-400 bg-zinc-950/30 border border-zinc-850 rounded-xl px-2.5 py-1">
-                          <span className="font-bold underline text-emerald-400 font-mono">{filteredDoneTasks.length}</span>
-                          <span>Tasks Completed</span>
+                          <span className="font-bold underline text-emerald-400 font-mono">{effectiveDoneTasks.length}</span>
+                          <span>Tasks Completed ({showAllTimeStats ? 'All Time' : `${timeScaleDays}d`})</span>
                         </div>
                       </div>
 

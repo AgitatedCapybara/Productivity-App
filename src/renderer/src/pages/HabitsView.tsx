@@ -14,7 +14,9 @@ import {
   Calendar, 
   Folder, 
   Sparkles,
-  Info
+  SlidersHorizontal,
+  Info,
+  X
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'motion/react'
 
@@ -34,6 +36,7 @@ export function HabitsView() {
 
   // Form states
   const [showAddForm, setShowAddForm] = useState(false)
+  const [showFilterPanel, setShowFilterPanel] = useState(false)
   const [newHabitName, setNewHabitName] = useState('')
   const [newHabitProject, setNewHabitProject] = useState<string>('')
   const [newHabitSessionLink, setNewHabitSessionLink] = useState(false)
@@ -67,6 +70,8 @@ export function HabitsView() {
     return true
   })
 
+  const hasActiveFilters = projectFilter !== null || statusFilter !== 'all'
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!newHabitName.trim()) return
@@ -89,7 +94,7 @@ export function HabitsView() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-y-auto p-6 sm:p-8 bg-[#09090b] text-zinc-100 view-container" id="habits-view-container">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl font-bold text-zinc-50 tracking-tight flex items-center gap-2">
             <Sparkles className="text-purple-400" size={20} />
@@ -100,15 +105,115 @@ export function HabitsView() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          className="flex items-center justify-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold cursor-pointer active:scale-95 transition-all shadow-lg shadow-purple-950/20"
-          id="toggle-add-habit-btn"
-        >
-          <Plus size={14} />
-          Create Habit
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Optional Filter Button */}
+          <button
+            type="button"
+            onClick={() => setShowFilterPanel(!showFilterPanel)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer border transition-all",
+              showFilterPanel || hasActiveFilters
+                ? "bg-zinc-800 border-zinc-700 text-purple-400 shadow-sm"
+                : "bg-zinc-900/60 hover:bg-zinc-850 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+            )}
+            title="Filter and categorize habits"
+          >
+            <SlidersHorizontal size={13} />
+            <span>Filters</span>
+            {hasActiveFilters && (
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 ml-0.5" />
+            )}
+          </button>
+
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            className="flex items-center justify-center gap-1.5 px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-semibold cursor-pointer active:scale-95 transition-all shadow-lg shadow-purple-950/20"
+            id="toggle-add-habit-btn"
+          >
+            <Plus size={14} />
+            Create Habit
+          </button>
+        </div>
       </div>
+
+      {/* Optional Filters Drawer */}
+      <AnimatePresence>
+        {showFilterPanel && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden mb-6"
+          >
+            <div className="p-4 rounded-2xl bg-zinc-900/40 border border-zinc-800/80 backdrop-blur-xl flex flex-wrap items-center justify-between gap-4">
+              {/* Status Tab buttons */}
+              <div className="flex items-center gap-1.5 bg-zinc-950/60 p-1 border border-zinc-800 rounded-xl">
+                <button
+                  onClick={() => setStatusFilter('all')}
+                  className={cn(
+                    "px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                    statusFilter === 'all' 
+                      ? "bg-zinc-800 text-zinc-100 shadow-sm" 
+                      : "text-zinc-400 hover:text-zinc-200"
+                  )}
+                >
+                  All
+                </button>
+                <button
+                  onClick={() => setStatusFilter('active')}
+                  className={cn(
+                    "px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                    statusFilter === 'active' 
+                      ? "bg-zinc-800 text-zinc-100 shadow-sm" 
+                      : "text-zinc-400 hover:text-zinc-200"
+                  )}
+                >
+                  Active Only
+                </button>
+                <button
+                  onClick={() => setStatusFilter('paused')}
+                  className={cn(
+                    "px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer",
+                    statusFilter === 'paused' 
+                      ? "bg-zinc-800 text-zinc-100 shadow-sm" 
+                      : "text-zinc-400 hover:text-zinc-200"
+                  )}
+                >
+                  Paused (Vacation)
+                </button>
+              </div>
+
+              {/* Project filtering selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-zinc-400 font-semibold">Project:</span>
+                <select
+                  value={projectFilter || ''}
+                  onChange={(e) => setProjectFilter(e.target.value === '' ? null : e.target.value)}
+                  className="px-3 py-1.5 bg-zinc-950 border border-zinc-800 rounded-xl text-xs text-zinc-200 focus:outline-none focus:border-purple-500/80"
+                >
+                  <option value="">All Projects</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+
+                {hasActiveFilters && (
+                  <button
+                    onClick={() => {
+                      setStatusFilter('all')
+                      setProjectFilter(null)
+                    }}
+                    className="text-xs text-zinc-400 hover:text-zinc-200 px-2 py-1 flex items-center gap-1 cursor-pointer"
+                  >
+                    <X size={12} />
+                    <span>Reset</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Creation Drawer / Collapse Panel */}
       <AnimatePresence>
@@ -202,58 +307,6 @@ export function HabitsView() {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Grid Filters Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-4 mb-6 border-b border-zinc-900 pb-4">
-        {/* Status Tab buttons */}
-        <div className="flex items-center gap-2 bg-zinc-900/30 p-1 border border-zinc-850 rounded-xl">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              statusFilter === 'all' 
-                ? 'bg-zinc-800 text-zinc-100' 
-                : 'text-zinc-450 hover:text-zinc-250'
-            }`}
-          >
-            All
-          </button>
-          <button
-            onClick={() => setStatusFilter('active')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              statusFilter === 'active' 
-                ? 'bg-zinc-805 text-zinc-100' 
-                : 'text-zinc-450 hover:text-zinc-250'
-            }`}
-          >
-            Active Habits
-          </button>
-          <button
-            onClick={() => setStatusFilter('paused')}
-            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-              statusFilter === 'paused' 
-                ? 'bg-zinc-805 text-zinc-100' 
-                : 'text-zinc-450 hover:text-zinc-250'
-            }`}
-          >
-            Paused (Vacation Mode)
-          </button>
-        </div>
-
-        {/* Project filtering selector */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Project:</span>
-          <select
-            value={projectFilter || ''}
-            onChange={(e) => setProjectFilter(e.target.value === '' ? null : e.target.value)}
-            className="px-2.5 py-1 bg-zinc-900 border border-zinc-850 rounded-lg text-xs text-zinc-350 focus:outline-none"
-          >
-            <option value="">All Projects</option>
-            {projects.map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </div>
-      </div>
 
       {loading && habits.length === 0 ? (
         <div className="flex-1 flex flex-col justify-center items-center gap-2 p-12 text-zinc-450">

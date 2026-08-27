@@ -1,6 +1,5 @@
 // src/renderer/src/layout/Sidebar.tsx
 import { useState, useEffect } from 'react'
-import { motion } from 'motion/react'
 import { 
   CheckSquare, 
   CalendarDays, 
@@ -118,31 +117,45 @@ export function Sidebar() {
 
   // Load preferences from local storage or sqlite settings
   useEffect(() => {
+    let isMounted = true
     const loadPreferences = async () => {
       const keys = ['today', 'upcoming', 'calendar', 'plan', 'habits', 'notes', 'views', 'analytics', 'deepwork', 'circle', 'inbox']
-      const updated: Record<string, boolean> = {}
-
-      for (const key of keys) {
-        if (window.electronAPI && window.electronAPI.getSetting) {
-          try {
-            const val = await window.electronAPI.getSetting(`sidebar.view.${key}`, 'true')
-            updated[key] = val !== 'false'
-          } catch (e) {
-            updated[key] = localStorage.getItem(`sidebar.view.${key}`) !== 'false'
-          }
-        } else {
-          updated[key] = localStorage.getItem(`sidebar.view.${key}`) !== 'false'
+      if (window.electronAPI && window.electronAPI.getSetting) {
+        try {
+          const results = await Promise.allSettled(
+            keys.map(k => window.electronAPI.getSetting(`sidebar.view.${k}`, 'true'))
+          )
+          if (!isMounted) return
+          const updated: Record<string, boolean> = {}
+          keys.forEach((key, idx) => {
+            const res = results[idx]
+            if (res.status === 'fulfilled') {
+              updated[key] = res.value !== 'false'
+            } else {
+              updated[key] = localStorage.getItem(`sidebar.view.${key}`) !== 'false'
+            }
+          })
+          setVisibleViews(updated)
+        } catch {
+          if (!isMounted) return
+          const fallback: Record<string, boolean> = {}
+          keys.forEach(k => { fallback[k] = localStorage.getItem(`sidebar.view.${k}`) !== 'false' })
+          setVisibleViews(fallback)
         }
+      } else {
+        if (!isMounted) return
+        const fallback: Record<string, boolean> = {}
+        keys.forEach(k => { fallback[k] = localStorage.getItem(`sidebar.view.${k}`) !== 'false' })
+        setVisibleViews(fallback)
       }
-      setVisibleViews(updated)
     }
 
     loadPreferences()
 
-    // Sync if settings view updates sidebar preferences
-    const pollInterval = setInterval(loadPreferences, 1500)
-    return () => clearInterval(pollInterval)
-  }, [activeView])
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const toggleShowMore = () => {
     const nextVal = !showMore
@@ -205,7 +218,7 @@ export function Sidebar() {
     return () => {
       active = false
     }
-  }, [activeView, tasks, lastViewedUpcoming])
+  }, [tasks, lastViewedUpcoming])
 
   const d = new Date()
   const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -270,9 +283,7 @@ export function Sidebar() {
     return (
       <button
         key={item.id}
-        onClick={() => {
-          setActiveView(item.id)
-        }}
+        onClick={() => { setActiveView(item.id); }}
         className={cn(
           "rounded-xl flex items-center transition-all duration-150 relative focus-visible:outline-none outline-none select-none target-md min-h-10",
           isExpanded ? "w-full px-3.5 py-2.5 gap-3" : "w-full h-10 justify-center",
@@ -296,17 +307,13 @@ export function Sidebar() {
         {isExpanded && (
           <span className="truncate">{item.title}</span>
         )}
-        
+
         {/* Selected Accent line */}
         {isActive && (
-          <motion.div 
-            layoutId="sidebar-active-indicator"
-            transition={{ type: "spring", stiffness: 380, damping: 30 }}
-            className={cn(
-              "absolute top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-md rounded-l-none opacity-100",
-              isExpanded ? "left-0" : "-left-2"
-            )} 
-          />
+          <div className={cn(
+            "absolute top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-md rounded-l-none opacity-100",
+            isExpanded ? "left-0" : "-left-2"
+          )} />
         )}
 
         {upcomingDotActive && (
@@ -486,9 +493,7 @@ export function Sidebar() {
                 return (
                   <button
                     key={project.id}
-                    onClick={() => {
-                      setSelectedProject(project.id)
-                    }}
+                    onClick={() => { setSelectedProject(project.id); }}
                     className={cn(
                       "rounded-xl flex items-center transition-all duration-150 outline-none focus:outline-none select-none target-md min-h-10",
                       isExpanded ? "w-full px-3.5 py-2.5 gap-3" : "w-full h-10 justify-center",
@@ -526,9 +531,7 @@ export function Sidebar() {
                     )}
 
                     {isActive && (
-                      <motion.div 
-                        layoutId="sidebar-active-project-indicator"
-                        transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                      <div 
                         className={cn(
                           "absolute top-1/2 -translate-y-1/2 w-1 h-5 rounded-r-md rounded-l-none",
                           isExpanded ? "left-0" : "-left-2"
@@ -606,9 +609,7 @@ export function Sidebar() {
             <>
               {/* Card Header & Metadata */}
               <div 
-                onClick={() => {
-                  setActiveView('deepwork')
-                }}
+                onClick={() => setActiveView('deepwork')}
                 className="cursor-pointer group leading-none min-w-0"
               >
                 <div className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 transition-colors">
@@ -622,9 +623,7 @@ export function Sidebar() {
 
               {/* Timer Countdown Display */}
               <div 
-                onClick={() => {
-                  setActiveView('deepwork')
-                }}
+                onClick={() => setActiveView('deepwork')}
                 className="cursor-pointer flex items-baseline gap-2 py-0.5"
               >
                 <span className="font-mono text-xl font-bold tracking-tight text-indigo-300 tabular-nums leading-none">
@@ -703,9 +702,7 @@ export function Sidebar() {
           ) : (
             /* Collapsed mini visual item */
             <button
-              onClick={() => {
-                setActiveView('deepwork')
-              }}
+              onClick={() => setActiveView('deepwork')}
               className="w-8 h-8 rounded-full bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400 hover:bg-indigo-500/20 hover:text-white transition-all cursor-pointer relative group/collapsed"
               title={`${formatTime(displaySeconds)} left | ${activeSessionDistractionCount} distractions`}
             >
@@ -728,9 +725,7 @@ export function Sidebar() {
         isExpanded ? "p-3" : "py-3 px-1"
       )}>
         <button
-          onClick={() => {
-            setActiveView('settings')
-          }}
+          onClick={() => setActiveView('settings')}
           className={cn(
             "rounded-xl flex items-center transition-all duration-150 relative focus:outline-none outline-none select-none target-md min-h-10",
             isExpanded ? "w-full px-3.5 py-2.5 gap-3" : "w-full h-10 justify-center",
@@ -753,17 +748,6 @@ export function Sidebar() {
             <span className="truncate">
               Settings
             </span>
-          )}
-
-          {activeView === 'settings' && (
-            <motion.div 
-              layoutId="sidebar-active-indicator"
-              transition={{ type: "spring", stiffness: 380, damping: 30 }}
-              className={cn(
-                "absolute top-1/2 -translate-y-1/2 w-1 h-5 bg-white rounded-r-md rounded-l-none opacity-100",
-                isExpanded ? "left-0" : "-left-2"
-              )} 
-            />
           )}
         </button>
       </div>
